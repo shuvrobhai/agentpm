@@ -7,14 +7,14 @@ import { GlobalStore } from '../core/store.js';
 export class ClaudeCodeAdapter implements AgentAdapter {
   name = 'claude-code';
 
-  async detect(): Promise<boolean> {
-    const localClaude = path.join(process.cwd(), '.claudecode');
-    const globalClaude = path.join(os.homedir(), '.claude');
-
-    const hasLocal = await fs.access(localClaude).then(() => true).catch(() => false);
-    const hasGlobal = await fs.access(globalClaude).then(() => true).catch(() => false);
-
-    return hasLocal || hasGlobal;
+  async detect(scope: 'global' | 'local' = 'local'): Promise<boolean> {
+    if (scope === 'local') {
+      const localClaude = path.join(process.cwd(), '.claudecode');
+      return await fs.access(localClaude).then(() => true).catch(() => false);
+    } else {
+      const globalClaude = path.join(os.homedir(), '.claude');
+      return await fs.access(globalClaude).then(() => true).catch(() => false);
+    }
   }
 
   capabilities(): string[] {

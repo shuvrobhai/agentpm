@@ -7,14 +7,14 @@ import { GlobalStore } from '../core/store.js';
 export class AntigravityAdapter implements AgentAdapter {
   name = 'antigravity';
 
-  async detect(): Promise<boolean> {
-    const localAgents = path.join(process.cwd(), '.agents');
-    const globalGemini = path.join(os.homedir(), '.gemini');
-
-    const hasLocal = await fs.access(localAgents).then(() => true).catch(() => false);
-    const hasGlobal = await fs.access(globalGemini).then(() => true).catch(() => false);
-
-    return hasLocal || hasGlobal;
+  async detect(scope: 'global' | 'local' = 'local'): Promise<boolean> {
+    if (scope === 'local') {
+      const localAgents = path.join(process.cwd(), '.agents');
+      return await fs.access(localAgents).then(() => true).catch(() => false);
+    } else {
+      const globalGemini = path.join(os.homedir(), '.gemini');
+      return await fs.access(globalGemini).then(() => true).catch(() => false);
+    }
   }
 
   capabilities(): string[] {

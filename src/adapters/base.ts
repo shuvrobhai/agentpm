@@ -1,6 +1,6 @@
 export interface AgentAdapter {
   name: string;
-  detect(): Promise<boolean>;
+  detect(scope?: 'global' | 'local'): Promise<boolean>;
   capabilities(): string[];
   install(pluginPath: string, scope: 'global' | 'local'): Promise<void>;
   uninstall(pluginName: string, scope: 'global' | 'local'): Promise<void>;

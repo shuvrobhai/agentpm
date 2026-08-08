@@ -1,11 +1,22 @@
-import { simpleGit } from 'simple-git';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { GlobalStore } from './store.js';
 import type { ParsedRepo } from './store.js';
 
+const execFileAsync = promisify(execFile);
 const COMMIT_SHA_REGEX = /^[0-9a-fA-F]{40}$/;
+
+async function runGit(args: string[], cwd?: string): Promise<string> {
+  const { stdout } = await execFileAsync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  return stdout.trim();
+}
 
 /**
  * Single acquisition surface (ADR 0013 Q15). All git-based fetching —
@@ -28,22 +39,23 @@ export async function cloneRepo(parsed: ParsedRepo, targetDir: string): Promise<
 
   const isCommitSha = parsed.ref ? COMMIT_SHA_REGEX.test(parsed.ref) : false;
 
-  const options = ['--depth', '1'];
-  if (parsed.ref && parsed.ref !== 'latest' && !isCommitSha) {
-    options.push('--branch', parsed.ref);
+  const cloneArgs = ['clone'];
+  if (!isCommitSha) {
+    cloneArgs.push('--depth', '1');
+    if (parsed.ref && parsed.ref !== 'latest') {
+      cloneArgs.push('--branch', parsed.ref);
+    }
   }
+  cloneArgs.push(parsed.cloneUrl, targetDir);
 
   await GlobalStore.ensureDir(path.dirname(targetDir));
 
-  const git = simpleGit();
-  await git.clone(parsed.cloneUrl, targetDir, isCommitSha ? [] : options);
+  await runGit(cloneArgs);
   if (isCommitSha && parsed.ref) {
-    const repoGit = simpleGit(targetDir);
-    await repoGit.checkout(parsed.ref);
+    await runGit(['checkout', parsed.ref], targetDir);
   }
 
-  const revParse = await simpleGit(targetDir).revparse(['HEAD']);
-  const commit = revParse.trim();
+  const commit = await runGit(['rev-parse', 'HEAD'], targetDir);
 
   let pluginDir = targetDir;
   if (parsed.subfolder) {
@@ -57,6 +69,7 @@ export async function cloneRepo(parsed: ParsedRepo, targetDir: string): Promise<
 
   return { dir: targetDir, commit, pluginDir };
 }
+
 
 export function contentHashOfDir(dir: string, skip: string[] = ['.git']): Promise<string> {
   return hashTree(dir, skip, new Set());

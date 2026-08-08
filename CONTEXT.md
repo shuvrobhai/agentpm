@@ -21,3 +21,9 @@
 - **Adapter Version Resolution**: The capability of an `AgentAdapter` to automatically resolve the target version of an adapted plugin from local adapted or global storage when unspecified by the CLI caller.
 - **Adapter Directory Encapsulation**: The architectural boundary where each target agent adapter owns the precise directory structure (`getPluginDir`, `getLocalPluginDir`) for storing and staging adapted plugin packages.
 - **Workspace-First Local Conversion**: The resolution strategy where `agentpm convert` outputs local conversions to the target adapter's local workspace directory (`getLocalPluginDir`), allowing `agentpm enable` to materialize directly from workspace files without requiring a global store installation.
+- **Pristine Repo Clone (`~/.agentplugins/repos/`)**: The local storage layer where upstream git repositories are cloned shallowly to preserve full commit history, tests, and build tooling without polluting portable packages.
+- **Clean Extracted Bundle (`~/.agentplugins/plugins/`)**: The sanitized, shareable distribution containing only the portable v1 core (`plugin.json` closed schema, `skills/`, `mcp.json`, `rules/`, `hooks.json`, `client-adapters/`, and auto-generated `README.md`).
+- **Source Registry (`source-registry.json`)**: The central provenance ledger tracking upstream clone URLs, resolved commit SHAs, directory content hashes, and detected source vendor identities.
+- **Personal Marketplace Index (`~/.agents/plugins/marketplace.json`)**: The local discovery catalog required by OpenAI Codex to register, discover, and assign policy permissions (`AVAILABLE`, `ON_INSTALL`) to local plugins.
+- **Native Codex Manifest Validator (`src/core/codex-validator.ts`)**: Pure TypeScript schema validation engine verifying that Codex manifests contain valid `interface` metadata, `capabilities` arrays, and no root `hooks`.
+

@@ -79,4 +79,36 @@ describe('MaterializationEngine Unit Tests', () => {
       await fs.rm(tmpTargetBase, { recursive: true, force: true }).catch(() => {});
     }
   });
+
+  test('Workspace plugins take precedence over global store', async () => {
+    const storePath = GlobalStore.getStorePath();
+    const globalPluginDir = path.join(storePath, 'global-ns', 'precedence-plugin', 'v1.0.0');
+    await fs.mkdir(globalPluginDir, { recursive: true });
+    await fs.writeFile(path.join(globalPluginDir, 'origin.txt'), 'global', 'utf8');
+
+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-prec-ws-'));
+    const localPluginDir = path.join(workspaceDir, '.agents', 'plugins', 'precedence-plugin');
+    await fs.mkdir(localPluginDir, { recursive: true });
+    await fs.writeFile(path.join(localPluginDir, 'origin.txt'), 'workspace', 'utf8');
+
+    try {
+      const result = await MaterializationEngine.materialize({
+        adapterName: 'antigravity',
+        pluginName: 'precedence-plugin',
+        version: 'workspace',
+        sourcePath: localPluginDir,
+        scope: 'local',
+        targetBaseDir: path.join(workspaceDir, '.agents', 'plugins'),
+        copy: false,
+      });
+
+      assert.equal(result.sourcePath, localPluginDir);
+      const content = await fs.readFile(path.join(result.materializedPath, 'origin.txt'), 'utf8');
+      assert.equal(content, 'workspace');
+    } finally {
+      await fs.rm(path.join(storePath, 'global-ns'), { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workspaceDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
 });
+

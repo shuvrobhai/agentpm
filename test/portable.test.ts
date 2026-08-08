@@ -148,9 +148,19 @@ describe('Portable Agent Plugins v1 output', () => {
 
       const skill = await fs.readFile(path.join(destDir, 'skills', 'demo', 'SKILL.md'), 'utf8');
       assert.ok(skill.includes('bin/demo.js'));
+
+      // Check auto-generated README.md
+      const readme = await fs.readFile(path.join(destDir, 'README.md'), 'utf8');
+      assert.ok(readme.includes('# demo-plugin (v2.0.0)'));
+      assert.ok(readme.includes('Original Vendor:'));
+      assert.ok(readme.includes('plugins enable demo-plugin'));
+
+      // Check original_vendor in plugin.json
+      assert.equal(pluginJson.original_vendor, 'claude-code');
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
       await fs.rm(destDir, { recursive: true, force: true });
     }
   });
 });
+

@@ -1,5 +1,6 @@
 import { installCommand } from './install.js';
 import { enableCommand } from './enable.js';
+import { GlobalStore } from '../core/store.js';
 
 export interface AddOptions {
   target?: string;
@@ -17,8 +18,8 @@ export async function addCommand(repo: string, options: AddOptions = {}): Promis
   if (options.skipEnable) return;
 
   try {
-    const parsed = repo.split('#')[0]?.split('/');
-    const pluginName = parsed?.[parsed.length - 1];
+    const parsed = GlobalStore.parseRepoIdentifier(repo);
+    const pluginName = parsed.pluginName;
     if (!pluginName) {
       console.log('Skipping auto-enable: could not infer plugin name.');
       return;
@@ -32,3 +33,4 @@ export async function addCommand(repo: string, options: AddOptions = {}): Promis
     console.log(`Skipping auto-enable: ${err.message}`);
   }
 }
+

@@ -1,25 +1,25 @@
 import path from 'node:path';
 import os from 'node:os';
 
-function xdgDataHome(): string {
-  return process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
-}
-
-function xdgCacheHome(): string {
-  return process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
-}
-
 /**
- * Injectable roots (ADR 0013 Q16): AGENTPM_STORE is the canonical store of
- * validated portable-core packages (XDG data), AGENTPM_CACHE is the disposable
- * fetch cache (XDG cache). Tests point both at a temp dir, never ~/.agentplugins.
+ * Injectable roots: AGENTPM_STORE is the canonical store of
+ * validated portable-core packages, AGENTPM_CACHE is the disposable
+ * fetch cache. Default store root is ~/.agentplugins.
  */
 export function agentpmStoreRoot(): string {
-  return process.env.AGENTPM_STORE || path.join(xdgDataHome(), 'agentpm');
+  return process.env.AGENTPM_STORE || path.join(os.homedir(), '.agentplugins');
 }
 
 export function agentpmCacheRoot(): string {
-  return process.env.AGENTPM_CACHE || path.join(xdgCacheHome(), 'agentpm');
+  return process.env.AGENTPM_CACHE || path.join(os.homedir(), '.cache', 'agentpm');
+}
+
+export function agentpmReposDir(): string {
+  return path.join(agentpmStoreRoot(), 'repos');
+}
+
+export function agentpmCleanPluginsDir(): string {
+  return path.join(agentpmStoreRoot(), 'plugins');
 }
 
 export function agentpmStorePluginsDir(): string {
@@ -30,6 +30,11 @@ export function agentpmStoreAdaptedDir(): string {
   return path.join(agentpmStoreRoot(), 'adapted');
 }
 
+export function agentpmRegistryPath(): string {
+  return path.join(agentpmStoreRoot(), 'source-registry.json');
+}
+
 export function agentpmFetchCacheDir(): string {
   return path.join(agentpmCacheRoot(), 'fetch');
 }
+

@@ -8,6 +8,7 @@ import { serializeNativeHooks } from '../ir/native-hooks.js';
 import { buildNativeManifestMetadata } from '../core/v1-manifest.js';
 import { MaterializationEngine } from '../core/materialization.js';
 import { GlobalStore } from '../core/store.js';
+import { validateCodexManifest } from '../core/codex-validator.js';
 
 export class CodexAdapter implements AgentAdapter {
   name = 'codex';
@@ -42,20 +43,47 @@ export class CodexAdapter implements AgentAdapter {
     const manualSteps: string[] = [];
     const { extensions } = ir;
 
-    const metadata = buildNativeManifestMetadata(
-      ir.metadata ?? {},
-      ir.source.pluginName || 'codex-plugin',
-    );
+    const desc = typeof ir.metadata['description'] === 'string' ? ir.metadata['description'] : '';
+    const shortDesc = desc.slice(0, 100) || `${ir.source.pluginName} skills`;
+    const longDesc = desc || `Comprehensive ${ir.source.pluginName} skills library.`;
+    const authorObj = (ir.metadata['author'] && typeof ir.metadata['author'] === 'object') ? (ir.metadata['author'] as any) : null;
+    const devName = authorObj?.name || 'Agent Plugins';
+    const keywords = Array.isArray(ir.metadata['keywords']) ? ir.metadata['keywords'] : [];
+    const cat = (typeof keywords[0] === 'string') ? keywords[0] : 'Coding';
+    const starterPrompts = ir.skills.length > 0
+      ? ir.skills.slice(0, 3).map((s) => `Use ${s.name} to assist with tasks.`.slice(0, 128))
+      : [`Use ${ir.source.pluginName} skills.`];
+
     const manifest: Record<string, unknown> = {
-      ...metadata,
+      name: ir.source.pluginName,
+      version: typeof ir.metadata['version'] === 'string' ? ir.metadata['version'] : '1.0.0',
+      description: desc || 'Agent plugin',
+      interface: {
+        displayName: typeof ir.metadata['title'] === 'string' ? ir.metadata['title'] : ir.source.pluginName,
+        shortDescription: shortDesc,
+        longDescription: longDesc,
+        developerName: devName,
+        category: cat,
+        capabilities: ['Interactive', 'Write'],
+        defaultPrompt: starterPrompts,
+      },
       skills: './skills/',
     };
+
+    if (authorObj) manifest['author'] = authorObj;
+    if (typeof ir.metadata['homepage'] === 'string') manifest['homepage'] = ir.metadata['homepage'];
+    if (typeof ir.metadata['repository'] === 'string') manifest['repository'] = ir.metadata['repository'];
+    if (typeof ir.metadata['license'] === 'string') manifest['license'] = ir.metadata['license'];
+    if (keywords.length > 0) manifest['keywords'] = keywords;
+
 
     if (ir.mcpServers.length > 0) {
       manifest.mcpServers = './.mcp.json';
     }
-    if (extensions.hooks.length > 0) {
-      manifest.hooks = './hooks/hooks.json';
+
+    const validation = validateCodexManifest(manifest);
+    if (!validation.valid) {
+      warnings.push(...validation.errors.map((e) => `Codex manifest schema warning: ${e}`));
     }
 
     files.push({
@@ -83,6 +111,7 @@ export class CodexAdapter implements AgentAdapter {
         if (server.env !== undefined) entry.env = server.env;
         if (server.url !== undefined) entry.url = server.url;
         if (server.headers !== undefined) entry.headers = server.headers;
+        if (server.cwd !== undefined) entry.cwd = server.cwd;
         mcpConfig[server.name] = entry;
       }
       files.push({
@@ -91,6 +120,7 @@ export class CodexAdapter implements AgentAdapter {
         merge: true,
         description: 'MCP server configuration',
       });
+
     }
 
     if (extensions.hooks.length > 0) {
@@ -173,7 +203,91 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   getLocalPluginDir(pluginName: string): string {
-    return path.join(process.cwd(), '.codex', 'skills', pluginName);
+    return path.join(process.cwd(), '.agents', 'plugins', pluginName);
+  }
+
+  private async updateMarketplace(pluginName: string, scope: 'global' | 'local', action: 'add' | 'remove'): Promise<void> {
+    const marketplaceFile = scope === 'local'
+      ? path.join(process.cwd(), '.agents', 'plugins', 'marketplace.json')
+      : path.join(os.homedir(), '.agents', 'plugins', 'marketplace.json');
+
+    try {
+      await fs.mkdir(path.dirname(marketplaceFile), { recursive: true });
+      let data: any = {
+        name: 'personal',
+        interface: { displayName: 'Personal' },
+        plugins: [],
+      };
+
+      try {
+        const raw = await fs.readFile(marketplaceFile, 'utf8');
+        data = JSON.parse(raw);
+        if (!Array.isArray(data.plugins)) {
+          data.plugins = [];
+        }
+      } catch {
+        // file doesn't exist yet, use default template
+      }
+
+      if (action === 'add') {
+        const exists = data.plugins.some((p: any) => p.name === pluginName);
+        if (!exists) {
+          data.plugins.push({
+            name: pluginName,
+            source: {
+              source: 'local',
+              path: `./plugins/${pluginName}`,
+            },
+            policy: {
+              installation: 'AVAILABLE',
+              authentication: 'ON_INSTALL',
+            },
+            category: 'Coding',
+          });
+          await fs.writeFile(marketplaceFile, JSON.stringify(data, null, 2) + '\n', 'utf8');
+          console.log(`[CodexAdapter] Registered ${pluginName} in ${marketplaceFile}`);
+        }
+      } else {
+        const initialLen = data.plugins.length;
+        data.plugins = data.plugins.filter((p: any) => p.name !== pluginName);
+        if (data.plugins.length !== initialLen) {
+          await fs.writeFile(marketplaceFile, JSON.stringify(data, null, 2) + '\n', 'utf8');
+          console.log(`[CodexAdapter] Unregistered ${pluginName} from ${marketplaceFile}`);
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[CodexAdapter] Could not update marketplace.json: ${err.message}`);
+    }
+  }
+
+  private async updateCodexConfig(pluginName: string, action: 'add' | 'remove'): Promise<void> {
+    const configFile = path.join(os.homedir(), '.codex', 'config.toml');
+    try {
+      let content = '';
+      try {
+        content = await fs.readFile(configFile, 'utf8');
+      } catch {
+        return; // config file doesn't exist
+      }
+
+      const pluginSection = `[plugins."${pluginName}@personal"]`;
+      if (action === 'add') {
+        if (!content.includes(pluginSection)) {
+          const addition = `\n${pluginSection}\nenabled = true\n`;
+          await fs.appendFile(configFile, addition, 'utf8');
+          console.log(`[CodexAdapter] Enabled ${pluginName}@personal in ${configFile}`);
+        }
+      } else {
+        if (content.includes(pluginSection)) {
+          const regex = new RegExp(`\\n*\\[plugins\\."${pluginName}@personal"\\]\\s*enabled\\s*=\\s*true\\s*`, 'g');
+          const updated = content.replace(regex, '\n');
+          await fs.writeFile(configFile, updated, 'utf8');
+          console.log(`[CodexAdapter] Disabled ${pluginName}@personal in ${configFile}`);
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[CodexAdapter] Could not update config.toml: ${err.message}`);
+    }
   }
 
   async enable(
@@ -185,8 +299,8 @@ export class CodexAdapter implements AgentAdapter {
     let version = options?.version;
 
     const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.codex', 'skills')
-      : path.join(os.homedir(), '.codex', 'skills');
+      ? path.join(process.cwd(), '.agents', 'plugins')
+      : path.join(os.homedir(), '.codex', 'plugins');
 
     if (scope === 'local' && !options?.version) {
       const localWorkspacePath = this.getLocalPluginDir(pluginName);
@@ -216,24 +330,37 @@ export class CodexAdapter implements AgentAdapter {
     } else {
       console.log(`[CodexAdapter] Materialized symlink: ${result.materializedPath} -> ${result.sourcePath} (${result.adaptedFilesCount} files adapted)`);
     }
+
+    // Register in marketplace and config.toml
+    await this.updateMarketplace(pluginName, scope, 'add');
+    if (scope === 'global') {
+      await this.updateCodexConfig(pluginName, 'add');
+    }
   }
 
   async disable(pluginName: string, scope: 'global' | 'local' = 'local'): Promise<void> {
-    const skillsDir = scope === 'local'
-      ? path.join(process.cwd(), '.codex', 'skills')
-      : path.join(os.homedir(), '.codex', 'skills');
-
-    const pluginsDir = scope === 'local'
-      ? path.join(process.cwd(), '.codex-plugin')
-      : path.join(os.homedir(), '.codex', 'plugins');
+    const targetDirs = scope === 'local'
+      ? [
+          path.join(process.cwd(), '.agents', 'plugins'),
+          path.join(process.cwd(), '.codex', 'plugins'),
+        ]
+      : [
+          path.join(os.homedir(), '.codex', 'plugins'),
+        ];
 
     const removed = await MaterializationEngine.dematerialize({
       pluginName,
-      targetBaseDirs: [skillsDir, pluginsDir],
+      targetBaseDirs: targetDirs,
     });
 
     for (const remPath of removed) {
       console.log(`[CodexAdapter] Removed materialization link: ${remPath}`);
+    }
+
+    // Unregister from marketplace and config.toml
+    await this.updateMarketplace(pluginName, scope, 'remove');
+    if (scope === 'global') {
+      await this.updateCodexConfig(pluginName, 'remove');
     }
 
     if (removed.length === 0) {
@@ -241,3 +368,6 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 }
+
+
+

@@ -14,7 +14,7 @@ export async function enableCommand(
 
     const enableOpts = options.copy !== undefined ? { copy: options.copy } : undefined;
 
-    if (options.target) {
+    if (options.target && options.target !== 'agent-plugins') {
       const adapter = getAdapter(options.target);
       await adapter.enable(plugin, scope, enableOpts);
       return;
@@ -30,10 +30,11 @@ export async function enableCommand(
       }
     }
 
-    if (materializedCount === 0 && scope === 'local') {
+    if (materializedCount === 0) {
       const defaultAdapter = new AntigravityAdapter();
       await defaultAdapter.enable(plugin, scope, enableOpts);
     }
+
   } catch (err: any) {
     console.error('Error enabling plugin:', err);
     process.exit(1);

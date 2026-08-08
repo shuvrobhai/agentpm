@@ -364,8 +364,8 @@ export class OpenCodeAdapter implements AgentAdapter {
     let version = options?.version;
 
     const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.opencode', 'skills')
-      : path.join(os.homedir(), '.config', 'opencode', 'skills');
+      ? path.join(process.cwd(), '.agents', 'plugins')
+      : path.join(os.homedir(), '.config', 'opencode', 'plugins');
 
     if (scope === 'local' && !options?.version) {
       const localWorkspacePath = this.getLocalPluginDir(pluginName);
@@ -398,17 +398,22 @@ export class OpenCodeAdapter implements AgentAdapter {
   }
 
   async disable(pluginName: string, scope: 'global' | 'local' = 'local'): Promise<void> {
-    const skillsDir = scope === 'local'
-      ? path.join(process.cwd(), '.opencode', 'skills')
-      : path.join(os.homedir(), '.config', 'opencode', 'skills');
-
-    const commandsDir = scope === 'local'
-      ? path.join(process.cwd(), '.opencode', 'commands')
-      : path.join(os.homedir(), '.config', 'opencode', 'commands');
+    const targetDirs = scope === 'local'
+      ? [
+          path.join(process.cwd(), '.agents', 'plugins'),
+          path.join(process.cwd(), '.opencode', 'plugins'),
+          path.join(process.cwd(), '.opencode', 'skills'),
+          path.join(process.cwd(), '.opencode', 'commands'),
+        ]
+      : [
+          path.join(os.homedir(), '.config', 'opencode', 'plugins'),
+          path.join(os.homedir(), '.config', 'opencode', 'skills'),
+          path.join(os.homedir(), '.config', 'opencode', 'commands'),
+        ];
 
     const removed = await MaterializationEngine.dematerialize({
       pluginName,
-      targetBaseDirs: [skillsDir, commandsDir],
+      targetBaseDirs: targetDirs,
     });
 
     for (const remPath of removed) {

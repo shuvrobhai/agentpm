@@ -89,8 +89,8 @@ describe('Agent Adapters Unit Tests', () => {
     await fs.mkdir(mockSource, { recursive: true });
 
     const adapter = new ClaudeCodeAdapter();
-    const localSkillsDir = path.join(process.cwd(), '.claudecode', 'skills');
-    const linkPath = path.join(localSkillsDir, 'test-claude-plugin');
+    const localPluginsDir = path.join(process.cwd(), '.agents', 'plugins');
+    const linkPath = path.join(localPluginsDir, 'test-claude-plugin');
 
     try {
       // Test Enable
@@ -107,6 +107,7 @@ describe('Agent Adapters Unit Tests', () => {
       await fs.rm(path.join(storePath, 'test-claude-ns'), { recursive: true, force: true }).catch(() => {});
     }
   });
+
 
   test('ClaudeCodeAdapter workspace-first enable (local converted plugin without global install)', async () => {
     const adapter = new ClaudeCodeAdapter();

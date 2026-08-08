@@ -83,6 +83,31 @@ describe('GlobalStore Unit Tests', () => {
       assert.ok(cacheDir.startsWith(tempStore));
       await fs.mkdir(cacheDir, { recursive: true });
       await fs.access(cacheDir);
+
+      // Verify repos path and vendor-tiered plugin path
+      const repoClonePath = GlobalStore.getRepoClonePath('test-owner', 'test-plugin');
+      assert.ok(repoClonePath.includes(path.join('repos', 'test-owner', 'test-plugin')));
+
+      const vendorPluginPath = GlobalStore.getPluginPath('test-owner', 'test-plugin', 'v1.0.0', 'claude-code');
+      assert.ok(vendorPluginPath.includes(path.join('plugins', 'claude-code', 'test-owner', 'test-plugin', 'v1.0.0')));
+
+      // Test source-registry.json
+      await GlobalStore.updateRegistry('test-owner/test-plugin', {
+        source: 'https://github.com/test-owner/test-plugin.git',
+        ref: 'v1.0.0',
+        resolved_commit: 'abcdef123456',
+        content_hash: 'sha256:1234567890',
+        source_vendor: 'claude-code',
+        installed_at: new Date().toISOString(),
+        clone_path: repoClonePath,
+        extracted_path: vendorPluginPath,
+        deployed_files: ['plugin.json', 'README.md'],
+      });
+
+      const registry = await GlobalStore.readRegistry();
+      assert.ok(registry.packages['test-owner/test-plugin']);
+      assert.equal(registry.packages['test-owner/test-plugin'].source_vendor, 'claude-code');
+      assert.equal(registry.packages['test-owner/test-plugin'].resolved_commit, 'abcdef123456');
     } finally {
       if (prevStore === undefined) delete process.env.AGENTPM_STORE;
       else process.env.AGENTPM_STORE = prevStore;
@@ -92,3 +117,4 @@ describe('GlobalStore Unit Tests', () => {
     }
   });
 });
+

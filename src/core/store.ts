@@ -1,6 +1,12 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { agentpmStorePluginsDir, agentpmStoreAdaptedDir } from './config.js';
+import {
+  agentpmStorePluginsDir,
+  agentpmStoreAdaptedDir,
+  agentpmReposDir,
+  agentpmCleanPluginsDir,
+  agentpmRegistryPath,
+} from './config.js';
 
 export interface ParsedRepo {
   namespace: string;
@@ -15,7 +21,26 @@ export interface StoredPlugin {
   pluginName: string;
   version: string;
   fullPath: string;
+  vendor?: string;
 }
+
+export interface SourceRegistryEntry {
+  source: string;
+  ref?: string;
+  resolved_commit: string;
+  content_hash: string;
+  source_vendor: string;
+  installed_at: string;
+  clone_path?: string;
+  extracted_path?: string;
+  deployed_files: string[];
+}
+
+export interface SourceRegistry {
+  version: string;
+  packages: Record<string, SourceRegistryEntry>;
+}
+
 
 const SAFE_PATH_COMPONENT = /^[a-zA-Z0-9_.-]+$/;
 
@@ -24,8 +49,18 @@ export class GlobalStore {
     return agentpmStorePluginsDir();
   }
 
+  static getReposPath(): string {
+    return agentpmReposDir();
+  }
+
   static getAdaptedStorePath(): string {
     return agentpmStoreAdaptedDir();
+  }
+
+  static getRepoClonePath(namespace: string, pluginName: string): string {
+    this.validatePathComponent(namespace, 'namespace');
+    this.validatePathComponent(pluginName, 'pluginName');
+    return path.join(this.getReposPath(), namespace, pluginName);
   }
 
   static getAdaptedPluginPath(adapterName: string, namespace: string, pluginName: string, version: string): string {
@@ -55,10 +90,14 @@ export class GlobalStore {
     }
   }
 
-  static getPluginPath(namespace: string, pluginName: string, version: string): string {
+  static getPluginPath(namespace: string, pluginName: string, version: string, vendor?: string): string {
     this.validatePathComponent(namespace, 'namespace');
     this.validatePathComponent(pluginName, 'pluginName');
     this.validatePathComponent(version, 'version');
+    if (vendor) {
+      this.validatePathComponent(vendor, 'vendor');
+      return path.join(this.getStorePath(), vendor, namespace, pluginName, version);
+    }
     return path.join(this.getStorePath(), namespace, pluginName, version);
   }
 
@@ -99,20 +138,47 @@ export class GlobalStore {
       }
     }
 
+    const storePath = this.getStorePath();
+
     if (targetNamespace) {
-      const pluginDir = path.join(this.getStorePath(), targetNamespace, targetPluginName);
-      const resolved = await resolveVersionFromPluginDir(pluginDir, targetVersion);
-      if (resolved) return resolved;
-      throw new Error(`Plugin "${pluginIdentifier}@${targetVersion}" not found in global store at ${pluginDir}`);
+      // 1. Check direct namespace/pluginName
+      const directDir = path.join(storePath, targetNamespace, targetPluginName);
+      const directResolved = await resolveVersionFromPluginDir(directDir, targetVersion);
+      if (directResolved) return directResolved;
+
+      // 2. Check vendor/namespace/pluginName
+      const topEntries = await fs.readdir(storePath).catch(() => []);
+      for (const vendor of topEntries) {
+        if (vendor.startsWith('.')) continue;
+        const vendorPluginDir = path.join(storePath, vendor, targetNamespace, targetPluginName);
+        const resolved = await resolveVersionFromPluginDir(vendorPluginDir, targetVersion);
+        if (resolved) return resolved;
+      }
+
+      throw new Error(`Plugin "${pluginIdentifier}@${targetVersion}" not found in global store at ${directDir}`);
     }
 
-    const storePath = this.getStorePath();
-    const namespaces = await fs.readdir(storePath).catch(() => []);
+    // Search all namespaces and vendor tiers
+    const topDirs = await fs.readdir(storePath).catch(() => []);
+    for (const top of topDirs) {
+      if (top.startsWith('.')) continue;
+      const topPath = path.join(storePath, top);
+      const statTop = await fs.stat(topPath).catch(() => null);
+      if (!statTop || !statTop.isDirectory()) continue;
 
-    for (const ns of namespaces) {
-      const pluginDir = path.join(storePath, ns, targetPluginName);
-      const resolved = await resolveVersionFromPluginDir(pluginDir, targetVersion);
-      if (resolved) return resolved;
+      // Check top/targetPluginName
+      const candidateDir = path.join(topPath, targetPluginName);
+      const directResolved = await resolveVersionFromPluginDir(candidateDir, targetVersion);
+      if (directResolved) return directResolved;
+
+      // Check top/subNamespace/targetPluginName (vendor-tiered)
+      const subDirs = await fs.readdir(topPath).catch(() => []);
+      for (const sub of subDirs) {
+        if (sub.startsWith('.')) continue;
+        const subPluginDir = path.join(topPath, sub, targetPluginName);
+        const subResolved = await resolveVersionFromPluginDir(subPluginDir, targetVersion);
+        if (subResolved) return subResolved;
+      }
     }
 
     throw new Error(`Plugin "${pluginIdentifier}@${targetVersion}" not found in any namespace in global store (${storePath})`);
@@ -122,39 +188,78 @@ export class GlobalStore {
     const storePath = this.getStorePath();
     const plugins: StoredPlugin[] = [];
 
-    const namespaces = await fs.readdir(storePath).catch(() => []);
+    const topEntries = await fs.readdir(storePath).catch(() => []);
 
-    for (const ns of namespaces) {
-      if (ns.startsWith('.')) continue;
-      const nsPath = path.join(storePath, ns);
-      const statNs = await fs.stat(nsPath).catch(() => null);
-      if (!statNs || !statNs.isDirectory()) continue;
+    for (const top of topEntries) {
+      if (top.startsWith('.')) continue;
+      const topPath = path.join(storePath, top);
+      const statTop = await fs.stat(topPath).catch(() => null);
+      if (!statTop || !statTop.isDirectory()) continue;
 
-      const pluginDirs = await fs.readdir(nsPath).catch(() => []);
-      for (const pName of pluginDirs) {
-        if (pName.startsWith('.')) continue;
-        const pPath = path.join(nsPath, pName);
-        const statP = await fs.stat(pPath).catch(() => null);
-        if (!statP || !statP.isDirectory()) continue;
+      const subEntries = await fs.readdir(topPath).catch(() => []);
+      for (const sub of subEntries) {
+        if (sub.startsWith('.')) continue;
+        const subPath = path.join(topPath, sub);
+        const statSub = await fs.stat(subPath).catch(() => null);
+        if (!statSub || !statSub.isDirectory()) continue;
 
-        const versions = await fs.readdir(pPath).catch(() => []);
-        for (const ver of versions) {
-          if (ver.startsWith('.')) continue;
-          const verPath = path.join(pPath, ver);
-          const statVer = await fs.stat(verPath).catch(() => null);
-          if (!statVer || !statVer.isDirectory()) continue;
+        const leafEntries = await fs.readdir(subPath).catch(() => []);
+        for (const leaf of leafEntries) {
+          if (leaf.startsWith('.')) continue;
+          const leafPath = path.join(subPath, leaf);
+          const statLeaf = await fs.stat(leafPath).catch(() => null);
+          if (!statLeaf || !statLeaf.isDirectory()) continue;
 
-          plugins.push({
-            namespace: ns,
-            pluginName: pName,
-            version: ver,
-            fullPath: verPath,
-          });
+          // Check if leaf is a version dir (e.g. namespace/plugin/version)
+          const isVersion = leaf === 'latest' || leaf === 'main' || leaf === 'master' || /^v?\d+/.test(leaf);
+          if (isVersion) {
+            plugins.push({
+              namespace: top,
+              pluginName: sub,
+              version: leaf,
+              fullPath: leafPath,
+            });
+          } else {
+            // Vendor-tiered: top=vendor, sub=namespace, leaf=pluginName
+            const versionEntries = await fs.readdir(leafPath).catch(() => []);
+            for (const ver of versionEntries) {
+              if (ver.startsWith('.')) continue;
+              const verPath = path.join(leafPath, ver);
+              const statVer = await fs.stat(verPath).catch(() => null);
+              if (statVer?.isDirectory()) {
+                plugins.push({
+                  vendor: top,
+                  namespace: sub,
+                  pluginName: leaf,
+                  version: ver,
+                  fullPath: verPath,
+                });
+              }
+            }
+          }
         }
       }
     }
 
     return plugins;
+  }
+
+  static async readRegistry(): Promise<SourceRegistry> {
+    const regPath = agentpmRegistryPath();
+    try {
+      const raw = await fs.readFile(regPath, 'utf8');
+      return JSON.parse(raw) as SourceRegistry;
+    } catch {
+      return { version: '1.0.0', packages: {} };
+    }
+  }
+
+  static async updateRegistry(packageName: string, entry: SourceRegistryEntry): Promise<void> {
+    const registry = await this.readRegistry();
+    registry.packages[packageName] = entry;
+    const regPath = agentpmRegistryPath();
+    await fs.mkdir(path.dirname(regPath), { recursive: true });
+    await fs.writeFile(regPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
   }
 
   static async removePlugin(pluginIdentifier: string): Promise<string[]> {
@@ -167,13 +272,28 @@ export class GlobalStore {
       removedPaths.push(parentDir);
     } else {
       const storePath = this.getStorePath();
-      const namespaces = await fs.readdir(storePath).catch(() => []);
-      for (const ns of namespaces) {
-        const candidatePath = path.join(storePath, ns, pluginIdentifier);
+      const topEntries = await fs.readdir(storePath).catch(() => []);
+      for (const top of topEntries) {
+        if (top.startsWith('.')) continue;
+        const topPath = path.join(storePath, top);
+        const statTop = await fs.stat(topPath).catch(() => null);
+        if (!statTop || !statTop.isDirectory()) continue;
+
+        const candidatePath = path.join(topPath, pluginIdentifier);
         const exists = await fs.access(candidatePath).then(() => true).catch(() => false);
         if (exists) {
           await fs.rm(candidatePath, { recursive: true, force: true });
           removedPaths.push(candidatePath);
+        }
+
+        const subEntries = await fs.readdir(topPath).catch(() => []);
+        for (const sub of subEntries) {
+          const subCandidate = path.join(topPath, sub, pluginIdentifier);
+          const subExists = await fs.access(subCandidate).then(() => true).catch(() => false);
+          if (subExists) {
+            await fs.rm(subCandidate, { recursive: true, force: true });
+            removedPaths.push(subCandidate);
+          }
         }
       }
     }

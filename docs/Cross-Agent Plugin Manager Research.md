@@ -637,11 +637,59 @@ agy plugin uninstall <plugin_name>
 | `hooks.json`  | External process triggers | Convert to JSON hook definitions             |
 | `mcp.json`    | `.mcp.json`               | Merge, **expand relative `cwd` to absolute** |
 
-### 9.4 Known Issues
+### 9.4 Codex Plugin Manifest Schema (`.codex-plugin/plugin.json`)
 
-- **Symlink dropping:** `store.rs` recursive copier historically skips symlinks. Always dereference before staging.
+Codex enforces a strict schema for `.codex-plugin/plugin.json`. Validated by `validate_plugin.py`:
+
+```json
+{
+  "name": "superpowers",
+  "version": "1.0.0",
+  "description": "Core skills library for coding agents",
+  "interface": {
+    "displayName": "Superpowers",
+    "shortDescription": "TDD, systematic debugging, and planning skills",
+    "longDescription": "Comprehensive skills library covering test-driven development, plan execution, and code review.",
+    "developerName": "obra",
+    "category": "Coding",
+    "defaultPrompt": "Use superpowers skills to assist with coding tasks."
+  },
+  "skills": "./skills/"
+}
+```
+
+#### Strict Schema Constraints
+1. **Required `interface` Object**: Must contain `displayName`, `shortDescription`, `longDescription`, `developerName`, `category`, and `defaultPrompt`.
+2. **No Top-Level `hooks` in `plugin.json`**: Codex plugin schema rejects `"hooks": "./hooks/hooks.json"` at the root of `plugin.json`.
+3. **No `${CLAUDE_PLUGIN_ROOT}`**: Paths inside hook scripts or MCP servers must be rewritten to absolute paths or relative to the Codex runtime root.
+
+### 9.5 Marketplace Registration & Runtime Activation
+
+For OpenAI Codex to discover and activate a plugin:
+
+1. **Personal Marketplace Registry (`~/.agents/plugins/marketplace.json`)**:
+   ```json
+   {
+     "name": "superpowers",
+     "path": "./plugins/superpowers",
+     "category": "Coding",
+     "installation": "AVAILABLE",
+     "authentication": "ON_INSTALL"
+   }
+   ```
+2. **Codex Runtime Config (`~/.codex/config.toml`)**:
+   ```toml
+   [plugins]
+   superpowers = "enabled"
+   ```
+   Or activated via: `codex plugin add superpowers@personal`.
+
+### 9.6 Known Issues & Transformation Rules
+
+- **Symlink dropping:** `store.rs` recursive copier skips symlinks. Always dereference before staging into Codex cache.
 - **Path flattening:** Marketplace name == plugin name causes path bugs.
 - **MCP relative paths:** `cwd` in `.mcp.json` resolves from launch dir, not plugin cache root. Must expand to absolute at install time.
+
 
 ---
 
@@ -1042,74 +1090,104 @@ For wildcard matchers (Claude `"*"`), use `".*"` in Antigravity.
 
 ## 15. Global Store & Workspace Layout
 
-### 15.1 Global Store
+### 15.1 Global Store (`~/.agentplugins/`)
+
+The global central store separates pristine upstream git repository clones, clean extracted shareable plugins, and a cryptographic source metadata registry.
 
 ```
-~/.agentpm/
-├── plugins/
-│   ├── <plugin-name>/
-│   │   ├── plugin.json          # Canonical manifest
-│   │   ├── SKILL.md
-│   │   ├── skills/
-│   │   ├── rules/
-│   │   ├── agents/
-│   │   ├── workflows/
-│   │   ├── commands/
-│   │   ├── hooks.json
-│   │   ├── mcp.json
-│   │   └── scripts/
-│   └── ...
-├── registry.json                # Installed plugin versions, sources, hashes
-├── adapters/                    # Downloaded adapter specs (future: from registry)
-│   ├── claude-code/
-│   ├── antigravity/
-│   ├── opencode/
-│   ├── codex/
-│   └── pi/
-└── cache/                       # Tarballs, git clones for fast re-fetch
+~/.agentplugins/
+├── repos/                                  # (a) Raw Git Clones
+│   └── <namespace>/
+│       └── <plugin-repo>/                  # Pristine shallow git clone (depth 1, exact upstream files)
+│
+├── plugins/                                # (b) Clean Extracted Shareable Plugins
+│   └── <vendor>/
+│       └── <namespace>/
+│           └── <plugin>/
+│               └── <version>/              # Content-addressed or semver version
+│                   ├── plugin.json         # Closed-schema portable manifest (with original_vendor tag)
+│                   ├── skills/
+│                   │   └── <name>/
+│                   │       └── SKILL.md    # Agent Skill instructions
+│                   ├── mcp.json            # Portable MCP with explicit transports
+│                   ├── rules/
+│                   │   └── <name>.md       # Behavioral rule files
+│                   ├── hooks.json          # Normalized declarative hooks
+│                   ├── client-adapters/    # Preserved source client intact (e.g. claude-code/)
+│                   └── README.md           # Auto-generated documentation (overview, vendor origin, skills)
+│
+└── source-registry.json                    # (c) Central Source Metadata Registry
 ```
 
-### 15.2 Workspace (No .agentpm/ Directory)
+#### Central Source Metadata Registry (`source-registry.json` / `apm.lock.yaml`)
+Records provenance, resolved commit SHA, directory content hash, and source vendor identity:
+
+```json
+{
+  "version": "1.0.0",
+  "packages": {
+    "github.com/example/code-auditor": {
+      "source": "github:example/code-auditor",
+      "ref": "v1.0.0",
+      "resolved_commit": "e8a91b2c3d4e5f67890123456789abcdef012345",
+      "content_hash": "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+      "source_vendor": "claude-code",
+      "installed_at": "2026-08-08T20:55:00.000Z",
+      "deployed_files": [
+        "plugin.json",
+        "skills/audit/SKILL.md",
+        "mcp.json",
+        "hooks.json",
+        "README.md",
+        "client-adapters/claude-code/.claude-plugin/plugin.json"
+      ]
+    }
+  }
+}
+```
+
+### 15.2 Workspace Layout (`.agents/` as Primary Canonical Destination)
+
+Whenever supported by the agent/runtime, **`.agents/` is the primary canonical target in every workspace**.
 
 ```
 my-project/
-├── .agentpm.lock                    # Single file — tracks installed plugins
-├── .claude/                         # Claude Code (if detected/used)
-│   ├── commands/
-│   │   └── agentpm-<plugin>.md
-│   ├── agents/
-│   │   └── agentpm-<agent>.md
-│   └── settings.local.json          # MCP + hooks (merged, not overwritten)
-├── .agents/                         # Antigravity (if detected/used)
-│   ├── skills/
-│   │   └── agentpm-<plugin>/
+├── .agentpm.lock                    # Single file — tracks installed plugins & hashes
+├── .agents/                         # PRIMARY Workspace Destination (Antigravity & universal agents)
+│   ├── plugins/                     # Isolated plugin bundles
+│   │   └── <plugin-name>/
+│   │       ├── plugin.json
+│   │       └── ...
+│   ├── skills/                      # Active discovered skills
+│   │   └── <skill-name>/
 │   │       └── SKILL.md
-│   ├── rules/
-│   │   └── agentpm-<plugin>-<rule>.md
-│   ├── agents/
-│   │   └── agentpm-<agent>.md
-│   ├── workflows/
-│   │   └── agentpm-<workflow>.md
-│   └── mcp_config.json
-├── .opencode/                       # OpenCode (if detected/used)
+│   ├── rules/                       # Behavioral rules
+│   │   └── <plugin-name>-<rule>.md
+│   ├── agents/                      # Subagent definitions
+│   │   └── <agent-name>.md
+│   ├── workflows/                   # Multi-step workflows
+│   │   └── <workflow-name>.md
+│   ├── mcp_config.json              # Workspace MCP server configuration
+│   ├── hooks.json                   # Lifecycle hook definitions
+│   └── AGENTS.md                    # Project-level context & agent guidance
+│
+├── .claudecode/                     # Vendor-specific fallback (only if .agents not supported)
 │   ├── skills/
-│   │   └── agentpm-<plugin>/
-│   │       └── SKILL.md
+│   │   └── <plugin-name>/
+│   └── settings.local.json
+├── .opencode/                       # Vendor-specific fallback (only if .agents not supported)
+│   ├── skills/
 │   └── opencode.json
-├── .mcp.json                        # Claude Code / Codex MCP (merged)
-├── CLAUDE.md                        # Claude Code rules (injected sections)
+├── .mcp.json                        # Consolidated MCP config (if required by vendor)
+├── CLAUDE.md                        # Claude Code rules (injected sections if fallback used)
 └── (project files)
 ```
 
-### 15.3 Namespacing
+### 15.3 Materialization & Precedence
 
-All agentpm-managed files are prefixed with `agentpm-` to avoid collisions with manually-created files:
-
-- Skills: `agentpm-<plugin-name>/`
-- Rules: `agentpm-<plugin-name>-<rule-name>.md`
-- Agents: `agentpm-<agent-name>.md`
-- Workflows: `agentpm-<workflow-name>.md`
-- MCP entries: `agentpm:<plugin-name>:<server-name>`
+1. **Direct Directory Symlinks**: Local workspaces symlink directly into `~/.agentplugins/plugins/<vendor>/<namespace>/<plugin>/` by default for instant live updates. Full file copying (`--copy`) is supported for isolated/air-gapped environments.
+2. **Workspace Overrides Global**: Local workspace skills, rules, and MCP configurations take full precedence over global store plugins when naming collisions occur.
+3. **Namespacing**: Managed rules, workflows, and subagents are namespaced by plugin name to prevent collisions with manually created workspace files.
 
 ---
 

@@ -197,7 +197,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   }
 
   getLocalPluginDir(pluginName: string): string {
-    return path.join(process.cwd(), '.claudecode', 'skills', pluginName);
+    return path.join(process.cwd(), '.agents', 'plugins', pluginName);
   }
 
   async enable(
@@ -209,8 +209,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     let version = options?.version;
 
     const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.claudecode', 'skills')
-      : path.join(os.homedir(), '.claude', 'skills');
+      ? path.join(process.cwd(), '.agents', 'plugins')
+      : path.join(os.homedir(), '.claude', 'plugins');
 
     if (scope === 'local' && !options?.version) {
       const localWorkspacePath = this.getLocalPluginDir(pluginName);
@@ -243,13 +243,18 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   }
 
   async disable(pluginName: string, scope: 'global' | 'local' = 'local'): Promise<void> {
-    const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.claudecode', 'skills')
-      : path.join(os.homedir(), '.claude', 'skills');
+    const targetDirs = scope === 'local'
+      ? [
+          path.join(process.cwd(), '.agents', 'plugins'),
+          path.join(process.cwd(), '.claude', 'plugins'),
+        ]
+      : [
+          path.join(os.homedir(), '.claude', 'plugins'),
+        ];
 
     const removed = await MaterializationEngine.dematerialize({
       pluginName,
-      targetBaseDirs: [baseDir],
+      targetBaseDirs: targetDirs,
     });
 
     for (const remPath of removed) {
@@ -257,7 +262,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     }
 
     if (removed.length === 0) {
-      console.log(`[ClaudeCodeAdapter] No active symlink found for ${pluginName} at ${path.join(baseDir, pluginName)}`);
+      console.log(`[ClaudeCodeAdapter] No active symlink found for ${pluginName}`);
     }
   }
 }
+
+

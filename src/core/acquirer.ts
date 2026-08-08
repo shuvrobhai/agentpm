@@ -88,7 +88,7 @@ async function listDeployedFiles(dir: string): Promise<string[]> {
   return files;
 }
 
-export class PackageAcquirer {
+export class Acquirer {
   static async acquire(spec: string, options: AcquireOptions = {}): Promise<AcquiredPackage> {
     const rawTrimmed = spec.trim();
 
@@ -115,11 +115,23 @@ export class PackageAcquirer {
     if (options.ref) parsed.ref = options.ref;
     if (options.subfolder) parsed.subfolder = options.subfolder;
 
+    // Security assertions
+    if (parsed.ref && parsed.ref.startsWith('-')) {
+      throw new Error(`Invalid git ref "${parsed.ref}": refs must not start with a dash (-)`);
+    }
+    if (parsed.subfolder && (parsed.subfolder.includes('..') || path.isAbsolute(parsed.subfolder))) {
+      throw new Error(`Invalid subfolder path "${parsed.subfolder}": path traversal forbidden`);
+    }
+
     if (options.temp) {
       return this.acquireTemporary(parsed);
     }
 
     return this.fetchPlugin(parsed, options.force);
+  }
+
+  static async update(spec: string, options: AcquireOptions = {}): Promise<AcquiredPackage> {
+    return this.acquire(spec, { ...options, force: true });
   }
 
   private static async acquireTemporary(parsed: ParsedRepo): Promise<AcquiredPackage> {
@@ -192,18 +204,13 @@ export class PackageAcquirer {
       await fs.writeFile(path.join(fetchCacheDir, '.complete'), acquired.commit, 'utf8');
     }
 
-    // Pristine tier: mirror the pristine clone into repos/<namespace>/<plugin>
-    // so clone_path in the registry points at a real checkout (the fetch cache
-    // is disposable).
+    // Pristine tier: mirror pristine clone into repos/<namespace>/<plugin>
     await fs.rm(repoDir, { recursive: true, force: true }).catch(() => {});
     await GlobalStore.copyDirectoryDereferenced(pluginSourceDir, repoDir).catch(() => {});
 
     const vendor = await detectSourceVendor(pluginSourceDir);
 
-    // Single conversion seam (ADR 0013): parse the pristine source → portable
-    // core → emit into the store plugin dir. The store holds a validated
-    // portable package (plugin.json + skills/ + client-adapters/), never a raw
-    // repository dump.
+    // Convert pristine source -> portable core in store plugin dir
     await fs.rm(targetPath, { recursive: true, force: true }).catch(() => {});
     await convertDirToPortableCore(pluginSourceDir, targetPath);
 
@@ -251,6 +258,9 @@ export class PackageAcquirer {
     };
   }
 }
+
+/** Alias for backward compatibility */
+export const PackageAcquirer = Acquirer;
 
 export async function cloneRepo(parsed: ParsedRepo, targetDir: string): Promise<AcquiredClone> {
   const isCommitSha = parsed.ref ? COMMIT_SHA_REGEX.test(parsed.ref) : false;

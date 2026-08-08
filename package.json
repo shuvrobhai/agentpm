@@ -23,7 +23,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "commander": "^15.0.0"
+    "commander": "^15.0.0",
+    "simple-git": "^3.36.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

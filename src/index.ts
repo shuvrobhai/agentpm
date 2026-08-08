@@ -14,8 +14,9 @@ program
 program
   .command('install')
   .description('Install a plugin package into the global store')
-  .argument('<repo>', 'GitHub repository or package identifier (e.g. user/repo)')
+  .argument('<repo>', 'GitHub repository or package identifier (e.g. user/repo or user/repo#v1.0.0)')
   .option('-g, --global', 'Install globally')
+  .option('-f, --force', 'Force re-download if package already exists')
   .action(installCommand);
 
 program

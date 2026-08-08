@@ -2,8 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { AgentAdapter } from './base.js';
-import { GlobalStore } from '../core/store.js';
-import { PluginConverter } from '../core/converter.js';
+import { MaterializationEngine } from '../core/materialization.js';
 
 export class AntigravityAdapter implements AgentAdapter {
   name = 'antigravity';
@@ -40,47 +39,23 @@ export class AntigravityAdapter implements AgentAdapter {
     scope: 'global' | 'local' = 'local',
     options?: { copy?: boolean }
   ): Promise<void> {
-    const rawSourcePath = await GlobalStore.findPluginPath(pluginName, version);
-
     const baseDir = scope === 'local'
       ? path.join(process.cwd(), '.agents', 'plugins')
       : path.join(os.homedir(), '.gemini', 'config', 'plugins');
 
-    await GlobalStore.ensureDir(baseDir);
-
-    const lastSegment = path.basename(rawSourcePath);
-    const isVersionSegment = ['latest', 'main', 'master', 'head'].includes(lastSegment.toLowerCase()) || /^v?\d+/.test(lastSegment);
-
-    const pluginDirName = isVersionSegment
-      ? path.basename(path.dirname(rawSourcePath))
-      : lastSegment;
-
-    const namespace = path.basename(path.dirname(path.dirname(rawSourcePath)));
-    const adaptedDir = GlobalStore.getAdaptedPluginPath(this.name, namespace || 'default', pluginDirName, version);
-
-    // Convert plugin to Antigravity-adapted format
-    const conversionResult = await PluginConverter.convertPlugin(rawSourcePath, adaptedDir, {
-      targetAdapter: 'antigravity',
-      memoryFilename: 'AGENTS.md',
-      rootVarName: 'PLUGIN_ROOT',
-      expandMcpPaths: true,
-      neutralizeTerms: true,
+    const result = await MaterializationEngine.materialize({
+      adapterName: this.name,
+      pluginName,
+      version,
+      scope,
+      targetBaseDir: baseDir,
+      copy: options?.copy,
     });
 
-    const targetSourcePath = conversionResult.filesModified > 0 ? adaptedDir : rawSourcePath;
-    const linkPath = path.join(baseDir, pluginDirName);
-
-    const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
-    if (exists) {
-      await fs.rm(linkPath, { recursive: true, force: true });
-    }
-
-    if (options?.copy) {
-      await GlobalStore.copyDirectoryDereferenced(targetSourcePath, linkPath);
-      console.log(`[AntigravityAdapter] Materialized copied folder: ${linkPath} (isolated edit mode)`);
+    if (result.isCopy) {
+      console.log(`[AntigravityAdapter] Materialized copied folder: ${result.materializedPath} (isolated edit mode)`);
     } else {
-      await fs.symlink(targetSourcePath, linkPath, 'dir');
-      console.log(`[AntigravityAdapter] Materialized symlink: ${linkPath} -> ${targetSourcePath} (${conversionResult.filesModified} files adapted)`);
+      console.log(`[AntigravityAdapter] Materialized symlink: ${result.materializedPath} -> ${result.sourcePath} (${result.adaptedFilesCount} files adapted)`);
     }
   }
 
@@ -93,21 +68,16 @@ export class AntigravityAdapter implements AgentAdapter {
       ? path.join(process.cwd(), '.agents', 'skills')
       : path.join(os.homedir(), '.gemini', 'config', 'skills');
 
-    const pluginLink = path.join(pluginsDir, pluginName);
-    const skillLink = path.join(skillsDir, pluginName);
+    const removed = await MaterializationEngine.dematerialize({
+      pluginName,
+      targetBaseDirs: [pluginsDir, skillsDir],
+    });
 
-    let removed = false;
-
-    for (const linkPath of [pluginLink, skillLink]) {
-      const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
-      if (exists) {
-        await fs.rm(linkPath, { recursive: true, force: true });
-        console.log(`[AntigravityAdapter] Removed materialization link: ${linkPath}`);
-        removed = true;
-      }
+    for (const remPath of removed) {
+      console.log(`[AntigravityAdapter] Removed materialization link: ${remPath}`);
     }
 
-    if (!removed) {
+    if (removed.length === 0) {
       console.log(`[AntigravityAdapter] No active materialization found for ${pluginName}`);
     }
   }

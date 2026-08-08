@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { AgentAdapter } from './base.js';
-import { GlobalStore } from '../core/store.js';
+import { MaterializationEngine } from '../core/materialization.js';
 
 export class ClaudeCodeAdapter implements AgentAdapter {
   name = 'claude-code';
@@ -35,33 +35,30 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     scope: 'global' | 'local' = 'local',
     options?: { copy?: boolean }
   ): Promise<void> {
-    const sourcePath = await GlobalStore.findPluginPath(pluginName, version);
     const baseDir = scope === 'local'
       ? path.join(process.cwd(), '.claudecode', 'skills')
       : path.join(os.homedir(), '.claude', 'skills');
 
-    await GlobalStore.ensureDir(baseDir);
+    const result = await MaterializationEngine.materialize({
+      adapterName: this.name,
+      pluginName,
+      version,
+      scope,
+      targetBaseDir: baseDir,
+      copy: options?.copy,
+      conversionOptions: {
+        targetAdapter: 'claude-code',
+        memoryFilename: 'CLAUDE.md',
+        rootVarName: 'CLAUDE_PLUGIN_ROOT',
+        expandMcpPaths: true,
+        neutralizeTerms: false,
+      },
+    });
 
-    const lastSegment = path.basename(sourcePath);
-    const isVersionSegment = ['latest', 'main', 'master', 'head'].includes(lastSegment.toLowerCase()) || /^v?\d+/.test(lastSegment);
-
-    const pluginDirName = isVersionSegment
-      ? path.basename(path.dirname(sourcePath))
-      : lastSegment;
-
-    const linkPath = path.join(baseDir, pluginDirName);
-
-    const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
-    if (exists) {
-      await fs.rm(linkPath, { recursive: true, force: true });
-    }
-
-    if (options?.copy) {
-      await GlobalStore.copyDirectoryDereferenced(sourcePath, linkPath);
-      console.log(`[ClaudeCodeAdapter] Materialized copied folder: ${linkPath} (isolated edit mode)`);
+    if (result.isCopy) {
+      console.log(`[ClaudeCodeAdapter] Materialized copied folder: ${result.materializedPath} (isolated edit mode)`);
     } else {
-      await fs.symlink(sourcePath, linkPath, 'dir');
-      console.log(`[ClaudeCodeAdapter] Materialized symlink: ${linkPath} -> ${sourcePath}`);
+      console.log(`[ClaudeCodeAdapter] Materialized symlink: ${result.materializedPath} -> ${result.sourcePath}`);
     }
   }
 
@@ -70,14 +67,17 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       ? path.join(process.cwd(), '.claudecode', 'skills')
       : path.join(os.homedir(), '.claude', 'skills');
 
-    const linkPath = path.join(baseDir, pluginName);
-    const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
+    const removed = await MaterializationEngine.dematerialize({
+      pluginName,
+      targetBaseDirs: [baseDir],
+    });
 
-    if (exists) {
-      await fs.rm(linkPath, { recursive: true, force: true });
-      console.log(`[ClaudeCodeAdapter] Removed symlink: ${linkPath}`);
-    } else {
-      console.log(`[ClaudeCodeAdapter] No active symlink found for ${pluginName} at ${linkPath}`);
+    for (const remPath of removed) {
+      console.log(`[ClaudeCodeAdapter] Removed symlink: ${remPath}`);
+    }
+
+    if (removed.length === 0) {
+      console.log(`[ClaudeCodeAdapter] No active symlink found for ${pluginName} at ${path.join(baseDir, pluginName)}`);
     }
   }
 }

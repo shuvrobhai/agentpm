@@ -1,12 +1,21 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { GlobalStore } from '../core/store.js';
+import { PackageManifest } from '../core/manifest.js';
 
 export interface PluginInfoReport {
   pluginIdentifier: string;
   storePath: string;
-  manifest?: any;
+  manifest: {
+    name: string;
+    version: string;
+    description: string;
+    author?: any;
+    isOpenCanonicalFormat: boolean;
+  };
   skills: string[];
+  mcpServers: string[];
+  hasHooks: boolean;
   activeInWorkspace: {
     antigravity: boolean;
     claudeCode: boolean;
@@ -16,49 +25,36 @@ export interface PluginInfoReport {
 export async function infoCommand(plugin: string, options: { json?: boolean }): Promise<void> {
   try {
     const storePath = await GlobalStore.findPluginPath(plugin);
+    const manifest = await PackageManifest.load(storePath);
 
-    // Check for manifest plugin.json
-    let manifest: any = undefined;
-    const manifestPath = path.join(storePath, 'plugin.json');
-    const hasManifest = await fs.access(manifestPath).then(() => true).catch(() => false);
-    if (hasManifest) {
-      const content = await fs.readFile(manifestPath, 'utf-8');
-      manifest = JSON.parse(content);
-    }
+    const lastSegment = path.basename(storePath);
+    const isVersionSegment = ['latest', 'main', 'master', 'head'].includes(lastSegment.toLowerCase()) || /^v?\d+/.test(lastSegment);
 
-    // Discover skills contained in package
-    const skills: string[] = [];
-    const skillsDir = path.join(storePath, 'skills');
-    const hasSkillsDir = await fs.access(skillsDir).then(() => true).catch(() => false);
-    if (hasSkillsDir) {
-      const entries = await fs.readdir(skillsDir).catch(() => []);
-      for (const entry of entries) {
-        if (!entry.startsWith('.')) skills.push(entry);
-      }
-    } else {
-      const rootSkill = path.join(storePath, 'SKILL.md');
-      const hasRootSkill = await fs.access(rootSkill).then(() => true).catch(() => false);
-      if (hasRootSkill) {
-        skills.push('SKILL.md');
-      }
-    }
-
-    // Check workspace materialization status
-    const pluginDirName = path.basename(storePath) === 'latest'
+    const pluginDirName = isVersionSegment
       ? path.basename(path.dirname(storePath))
-      : path.basename(storePath);
+      : lastSegment;
 
-    const antigravityPath = path.join(process.cwd(), '.agents', 'skills', pluginDirName);
+    const antigravityPlugins = path.join(process.cwd(), '.agents', 'plugins', pluginDirName);
+    const antigravitySkills = path.join(process.cwd(), '.agents', 'skills', pluginDirName);
     const claudePath = path.join(process.cwd(), '.claudecode', 'skills', pluginDirName);
 
-    const isAntigravityActive = await fs.lstat(antigravityPath).then(() => true).catch(() => false);
+    const isAntigravityActive = (await fs.lstat(antigravityPlugins).then(() => true).catch(() => false)) ||
+                                (await fs.lstat(antigravitySkills).then(() => true).catch(() => false));
     const isClaudeActive = await fs.lstat(claudePath).then(() => true).catch(() => false);
 
     const report: PluginInfoReport = {
       pluginIdentifier: plugin,
       storePath,
-      manifest,
-      skills,
+      manifest: {
+        name: manifest.name,
+        version: manifest.version,
+        description: manifest.description,
+        author: manifest.author,
+        isOpenCanonicalFormat: manifest.isOpenCanonicalFormat,
+      },
+      skills: manifest.capabilities.skills,
+      mcpServers: manifest.capabilities.mcpServers,
+      hasHooks: manifest.capabilities.hooks,
       activeInWorkspace: {
         antigravity: isAntigravityActive,
         claudeCode: isClaudeActive,
@@ -70,19 +66,19 @@ export async function infoCommand(plugin: string, options: { json?: boolean }): 
       return;
     }
 
-    console.log(`\n🔍 Plugin Information: ${plugin}\n`);
+    console.log(`\n🔍 Plugin Information: ${manifest.name}\n`);
     console.log(`  • Store Location: ${storePath}`);
-    if (manifest?.description) {
+    if (manifest.description) {
       console.log(`  • Description:    ${manifest.description}`);
     }
-    if (manifest?.version) {
-      console.log(`  • Version:        ${manifest.version}`);
-    }
-
-    console.log(`  • Contained Skills: ${skills.length > 0 ? skills.join(', ') : 'None detected'}`);
-    console.log('  • Workspace Materialization Status:');
-    console.log(`     - Antigravity: ${isAntigravityActive ? 'Active (symlinked)' : 'Inactive'}`);
-    console.log(`     - Claude Code: ${isClaudeActive ? 'Active (symlinked)' : 'Inactive'}`);
+    console.log(`  • Version:        ${manifest.version}`);
+    console.log(`  • Open Canonical: ${manifest.isOpenCanonicalFormat ? 'Yes' : 'No (vendor-specific)'}`);
+    console.log(`  • Skills:         ${manifest.capabilities.skills.length > 0 ? manifest.capabilities.skills.join(', ') : 'None'}`);
+    console.log(`  • MCP Servers:    ${manifest.capabilities.mcpServers.length > 0 ? manifest.capabilities.mcpServers.join(', ') : 'None'}`);
+    console.log(`  • Hooks Defined:  ${manifest.capabilities.hooks ? 'Yes' : 'No'}`);
+    console.log('  • Workspace Status:');
+    console.log(`     - Antigravity: ${isAntigravityActive ? 'Active' : 'Inactive'}`);
+    console.log(`     - Claude Code: ${isClaudeActive ? 'Active' : 'Inactive'}`);
     console.log('');
   } catch (err: any) {
     console.error(`Error fetching info for plugin: ${err.message}`);

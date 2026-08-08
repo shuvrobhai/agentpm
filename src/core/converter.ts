@@ -1,6 +1,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { convertHooks, ClaudeHooksFile } from './hook-converter.js';
+import { ConversionPipeline } from './pipeline/pipeline.js';
+import { ConversionContext } from './pipeline/context.js';
+import {
+  VariableRewriteStep,
+  MemoryTranspileStep,
+  McpPathExpansionStep,
+  HookSchemaConvertStep,
+  TerminologyNeutralizeStep,
+} from './pipeline/steps.js';
 
 export interface ConversionOptions {
   targetAdapter?: 'antigravity' | 'claude-code' | 'codex' | 'opencode' | 'pi' | string;
@@ -20,6 +28,14 @@ export interface ConversionResult {
 }
 
 export class PluginConverter {
+  private static defaultPipeline = new ConversionPipeline([
+    new VariableRewriteStep(),
+    new MemoryTranspileStep(),
+    new McpPathExpansionStep(),
+    new HookSchemaConvertStep(),
+    new TerminologyNeutralizeStep(),
+  ]);
+
   static async convertPlugin(
     sourceDir: string,
     targetDir: string,
@@ -129,84 +145,23 @@ export class PluginConverter {
       return false;
     }
 
-    let content = await fs.readFile(srcPath, 'utf8');
-    const originalContent = content;
+    const content = await fs.readFile(srcPath, 'utf8');
 
-    // 1. Variable Rewriting (${CLAUDE_PLUGIN_ROOT} / ${GEMINI_PLUGIN_ROOT} -> ${PLUGIN_ROOT})
-    if (content.includes('${CLAUDE_PLUGIN_ROOT}') || content.includes('${GEMINI_PLUGIN_ROOT}')) {
-      const varRegex = /\$\{(CLAUDE_PLUGIN_ROOT|GEMINI_PLUGIN_ROOT)\}/g;
-      const matches = content.match(varRegex);
-      if (matches) {
-        result.variablesRewritten += matches.length;
-      }
-      content = content.replace(varRegex, `\${${options.rootVarName}}`);
-    }
+    const context: ConversionContext = {
+      srcPath,
+      destPath,
+      sourceRoot,
+      targetRoot,
+      ext,
+      basename,
+      content,
+      options,
+      result,
+    };
 
-    // 2. Memory Filename Transformation (CLAUDE.md -> AGENTS.md)
-    if (options.memoryFilename === 'AGENTS.md') {
-      content = content.replace(/CLAUDE\.md/g, 'AGENTS.md');
-      content = content.replace(/claudeMd/g, 'agentsMd');
-    } else if (options.memoryFilename === 'CLAUDE.md') {
-      content = content.replace(/AGENTS\.md/g, 'CLAUDE.md');
-      content = content.replace(/agentsMd/g, 'claudeMd');
-    }
+    const pipelineRes = await this.defaultPipeline.execute(context);
 
-    // 3. MCP Config Path Normalization (.mcp.json / mcp_config.json)
-    if (options.expandMcpPaths && (basename === '.mcp.json' || basename === 'mcp_config.json' || basename === 'plugin.json')) {
-      try {
-        const json = JSON.parse(content);
-        let modified = false;
-
-        const processMcpServers = (serversObj: Record<string, any>) => {
-          for (const serverKey of Object.keys(serversObj)) {
-            const server = serversObj[serverKey];
-            if (server && typeof server.cwd === 'string' && !path.isAbsolute(server.cwd)) {
-              server.cwd = path.resolve(sourceRoot, server.cwd);
-              result.mcpPathsExpanded++;
-              modified = true;
-            }
-          }
-        };
-
-        if (json.mcpServers && typeof json.mcpServers === 'object') {
-          processMcpServers(json.mcpServers);
-        } else if (json.mcp && typeof json.mcp === 'object') {
-          processMcpServers(json.mcp);
-        }
-
-        if (modified) {
-          content = JSON.stringify(json, null, 2);
-        }
-      } catch (e) {
-        // Not valid JSON or parsing error
-      }
-    }
-
-    // 4. Hooks Schema Conversion (hooks.json for Antigravity target)
-    if (basename === 'hooks.json' && options.targetAdapter === 'antigravity') {
-      try {
-        const json = JSON.parse(content);
-        if (json.hooks) {
-          const pluginName = path.basename(sourceRoot);
-          const converted = convertHooks(json as ClaudeHooksFile, pluginName);
-          content = JSON.stringify(converted.output, null, 2);
-          if (result.hooksConverted !== undefined) {
-            result.hooksConverted += converted.converted;
-          }
-        }
-      } catch (e) {
-        // Not valid JSON or error converting
-      }
-    }
-
-    // 5. Terminology Neutralization (Claude / Cowork -> coding agent)
-    if (options.neutralizeTerms && (ext === '.md' || ext === '.txt')) {
-      content = content.replace(/\bClaude Code\b/g, 'coding agent');
-      content = content.replace(/\bClaude\b/g, 'coding agent');
-      content = content.replace(/\bCowork\b/g, 'agent environment');
-    }
-
-    await fs.writeFile(destPath, content, 'utf8');
-    return content !== originalContent;
+    await fs.writeFile(destPath, pipelineRes.content, 'utf8');
+    return pipelineRes.modified;
   }
 }

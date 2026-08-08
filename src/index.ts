@@ -4,6 +4,9 @@ import { Command } from 'commander';
 import { installCommand } from './commands/install.js';
 import { enableCommand } from './commands/enable.js';
 import { disableCommand } from './commands/disable.js';
+import { listCommand } from './commands/list.js';
+import { infoCommand } from './commands/info.js';
+import { uninstallCommand } from './commands/uninstall.js';
 
 const program = new Command();
 
@@ -36,4 +39,27 @@ program
   .option('-t, --target <agent>', 'Specific target agent adapter (e.g., antigravity, claude-code)')
   .action(disableCommand);
 
+program
+  .command('list')
+  .description('List materialized workspace plugins or global store inventory')
+  .option('-g, --global', 'List all installed plugins in central global store')
+  .option('--json', 'Output results formatted as JSON')
+  .action(listCommand);
+
+program
+  .command('info')
+  .description('Inspect plugin capabilities, manifest headers, and materialization state')
+  .argument('<plugin>', 'Plugin name or owner/plugin')
+  .option('--json', 'Output details formatted as JSON')
+  .action(infoCommand);
+
+program
+  .command('uninstall')
+  .alias('remove')
+  .description('Dematerialize active symlinks and purge plugin from global store')
+  .argument('<plugin>', 'Plugin name or owner/plugin')
+  .option('-g, --global', 'Also dematerialize from global agent directories')
+  .action(uninstallCommand);
+
 program.parse(process.argv);
+

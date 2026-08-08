@@ -9,6 +9,13 @@ export interface ParsedRepo {
   cloneUrl: string;
 }
 
+export interface StoredPlugin {
+  namespace: string;
+  pluginName: string;
+  version: string;
+  fullPath: string;
+}
+
 const SAFE_PATH_COMPONENT = /^[a-zA-Z0-9_.-]+$/;
 
 export class GlobalStore {
@@ -44,6 +51,73 @@ export class GlobalStore {
     throw new Error(`Plugin "${pluginIdentifier}@${version}" not found in any namespace in global store (${storePath})`);
   }
 
+  static async listGlobalPlugins(): Promise<StoredPlugin[]> {
+    const storePath = this.getStorePath();
+    const plugins: StoredPlugin[] = [];
+
+    const namespaces = await fs.readdir(storePath).catch(() => []);
+
+    for (const ns of namespaces) {
+      if (ns.startsWith('.')) continue;
+      const nsPath = path.join(storePath, ns);
+      const statNs = await fs.stat(nsPath).catch(() => null);
+      if (!statNs || !statNs.isDirectory()) continue;
+
+      const pluginDirs = await fs.readdir(nsPath).catch(() => []);
+      for (const pName of pluginDirs) {
+        if (pName.startsWith('.')) continue;
+        const pPath = path.join(nsPath, pName);
+        const statP = await fs.stat(pPath).catch(() => null);
+        if (!statP || !statP.isDirectory()) continue;
+
+        const versions = await fs.readdir(pPath).catch(() => []);
+        for (const ver of versions) {
+          if (ver.startsWith('.')) continue;
+          const verPath = path.join(pPath, ver);
+          const statVer = await fs.stat(verPath).catch(() => null);
+          if (!statVer || !statVer.isDirectory()) continue;
+
+          plugins.push({
+            namespace: ns,
+            pluginName: pName,
+            version: ver,
+            fullPath: verPath,
+          });
+        }
+      }
+    }
+
+    return plugins;
+  }
+
+  static async removePlugin(pluginIdentifier: string): Promise<string[]> {
+    const removedPaths: string[] = [];
+
+    if (pluginIdentifier.includes('/')) {
+      const targetPath = await this.findPluginPath(pluginIdentifier);
+      const parentDir = path.dirname(targetPath);
+      await fs.rm(parentDir, { recursive: true, force: true });
+      removedPaths.push(parentDir);
+    } else {
+      const storePath = this.getStorePath();
+      const namespaces = await fs.readdir(storePath).catch(() => []);
+      for (const ns of namespaces) {
+        const candidatePath = path.join(storePath, ns, pluginIdentifier);
+        const exists = await fs.access(candidatePath).then(() => true).catch(() => false);
+        if (exists) {
+          await fs.rm(candidatePath, { recursive: true, force: true });
+          removedPaths.push(candidatePath);
+        }
+      }
+    }
+
+    if (removedPaths.length === 0) {
+      throw new Error(`Plugin "${pluginIdentifier}" not found in global store.`);
+    }
+
+    return removedPaths;
+  }
+
   static validatePathComponent(component: string, name: string): void {
     if (!component || component === '.' || component === '..' || !SAFE_PATH_COMPONENT.test(component)) {
       throw new Error(`Invalid or unsafe ${name}: "${component}". Must contain only alphanumeric characters, underscores, hyphens, or dots.`);
@@ -74,10 +148,23 @@ export class GlobalStore {
     // Handle full URLs vs owner/repo format
     if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('git@')) {
       const cleaned = raw.replace(/\.git$/, '');
-      const urlParts = cleaned.split('/');
-      pluginName = urlParts.pop() || '';
-      namespace = urlParts.pop() || '';
-      cloneUrl = raw.endsWith('.git') ? raw : `${raw}.git`;
+      if (cleaned.includes('/tree/')) {
+        const [repoBase, treePath] = cleaned.split('/tree/');
+        const urlParts = repoBase.split('/');
+        pluginName = urlParts.pop() || '';
+        namespace = urlParts.pop() || '';
+        cloneUrl = `${repoBase}.git`;
+
+        if (!ref && treePath) {
+          const treeParts = treePath.split('/');
+          ref = treeParts[0];
+        }
+      } else {
+        const urlParts = cleaned.split('/');
+        pluginName = urlParts.pop() || '';
+        namespace = urlParts.pop() || '';
+        cloneUrl = raw.endsWith('.git') ? raw : `${raw}.git`;
+      }
     } else {
       const parts = raw.split('/');
       if (parts.length !== 2) {

@@ -8,3 +8,5 @@
 - **Namespace**: A grouping mechanism for packages (usually a GitHub username or org) to prevent name collisions in the global store.
 - **Versioned Subdirectories**: The structure in the global store where each plugin version gets its own folder (`<namespace>/<plugin-name>/<version>/`) to allow multiple versions to coexist.
 - **Symlink Materialization**: A technique where `agentpm` adapters create symlinks in the target agent's specific directories pointing to the global store, allowing zero-copy sharing and live updates.
+- **Dematerialize-on-Uninstall**: Safety mechanism where `agentpm uninstall` detects and unlinks all active workspace/global symlinks pointing to a package before removing its files from the global store.
+- **Package Inspection**: The process by which `agentpm info` scans and parses declarative manifests (`plugin.json`, `SKILL.md`) to report capabilities and target agent compatibility without executing code.

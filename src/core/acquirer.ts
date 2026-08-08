@@ -242,6 +242,9 @@ export class Acquirer {
       if (!options.ref && registryEntry.ref) {
         parsed.ref = registryEntry.ref;
       }
+      if (!options.subfolder && registryEntry.subfolder) {
+        parsed.subfolder = registryEntry.subfolder;
+      }
     }
 
     if (options.ref) parsed.ref = options.ref;
@@ -376,6 +379,7 @@ export class Acquirer {
     await GlobalStore.updateRegistry(`${parsed.namespace}/${parsed.pluginName}`, {
       source: parsed.cloneUrl,
       ...(parsed.ref ? { ref: parsed.ref } : {}),
+      ...(parsed.subfolder ? { subfolder: parsed.subfolder } : {}),
       resolved_commit: commit,
       content_hash: contentHash,
       source_vendor: vendor,

@@ -27,6 +27,7 @@ export interface StoredPlugin {
 export interface SourceRegistryEntry {
   source: string;
   ref?: string;
+  subfolder?: string;
   resolved_commit: string;
   content_hash: string;
   source_vendor: string;

@@ -154,4 +154,23 @@ describe('Acquirer Unit Tests', () => {
       await fs.rm(outNative, { recursive: true, force: true }).catch(() => {});
     }
   });
+
+  test('Acquirer.update preserves recorded ref and subfolder from registry ledger', async () => {
+    const { GlobalStore } = await import('../src/core/store.js');
+    const mockEntry = {
+      source: 'https://github.com/owner/sub-repo.git',
+      ref: 'v2.0.0',
+      subfolder: 'plugins/my-sub',
+      resolved_commit: 'b'.repeat(40),
+      content_hash: 'c'.repeat(64),
+      source_vendor: 'claude-code',
+      installed_at: new Date().toISOString(),
+      deployed_files: [],
+    };
+
+    await GlobalStore.updateRegistry('owner/sub-repo', mockEntry);
+    const registry = await GlobalStore.readRegistry();
+    assert.equal(registry.packages['owner/sub-repo']?.subfolder, 'plugins/my-sub');
+    assert.equal(registry.packages['owner/sub-repo']?.ref, 'v2.0.0');
+  });
 });

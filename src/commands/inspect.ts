@@ -17,6 +17,6 @@ export async function inspectCommand(source: string, options: InspectCommandOpti
     printIRSummary(result.ir);
   } catch (err: unknown) {
     console.error('Error inspecting plugin:', err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

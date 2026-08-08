@@ -25,8 +25,8 @@ export async function convertCommand(
     );
 
     printIRSummary(result.ir);
-  } catch (err: any) {
-    console.error('Error converting plugin:', err);
-    process.exit(1);
+  } catch (err: unknown) {
+    console.error('Error converting plugin:', err instanceof Error ? err.message : String(err));
+    process.exitCode = 1;
   }
 }

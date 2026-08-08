@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { PortableCoreIR, ConversionResult } from '../ir/types.js';
 import { MaterializationEngine } from '../core/materialization.js';
 import { GlobalStore } from '../core/store.js';
+import { validateManifestForProvider } from '../core/manifest-validator.js';
 
 const NON_PLUGIN_DIR_NAMES = new Set([
   'cache',
@@ -50,6 +51,7 @@ export function isValidPluginEntry(
 
   return false;
 }
+
 
 export interface ActivePluginInfo {
   agent: string;
@@ -172,7 +174,6 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
         const symlinkPath = path.join(dir, entry);
         const lstat = await fs.lstat(symlinkPath).catch(() => null);
         if (!lstat) continue;
-        if (!isValidPluginEntry(entry, lstat, dir)) continue;
 
         let targetPath: string | undefined;
         let isBroken = false;
@@ -238,6 +239,44 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
               fixedIssues.push(`[${this.displayName || this.name}] Removed broken symlink: ${item.materializedPath}`);
             } catch (err: any) {
               fixedIssues.push(`[${this.displayName || this.name}] Failed to remove ${item.materializedPath}: ${err.message}`);
+            }
+          }
+        } else if (!item.isBroken) {
+          // Check manifest schema
+          const pluginDir = item.materializedPath;
+          const candidateManifests = [
+            path.join(pluginDir, 'plugin.json'),
+            path.join(pluginDir, '.claude-plugin', 'plugin.json'),
+            path.join(pluginDir, '.codex-plugin', 'plugin.json'),
+            path.join(pluginDir, 'opencode.json'),
+          ];
+
+          for (const manifestPath of candidateManifests) {
+            const exists = await fs.access(manifestPath).then(() => true).catch(() => false);
+            if (exists) {
+              try {
+                const raw = await fs.readFile(manifestPath, 'utf8');
+                const parsed = JSON.parse(raw);
+                const valResult = validateManifestForProvider(this.name, parsed);
+                if (!valResult.valid) {
+                  issues.push({
+                    type: 'schema_error',
+                    agent: this.name,
+                    scope,
+                    path: manifestPath,
+                    message: `Manifest schema validation failed: ${valResult.errors.join('; ')}`,
+                  });
+                }
+              } catch (err: any) {
+                issues.push({
+                  type: 'schema_error',
+                  agent: this.name,
+                  scope,
+                  path: manifestPath,
+                  message: `Failed to parse manifest JSON: ${err.message}`,
+                });
+              }
+              break;
             }
           }
         }
@@ -364,7 +403,6 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     });
   }
 
-  protected async onAfterEnable(_context: MaterializationContext): Promise<void> {}
-  protected async onAfterDisable(_context: DematerializationContext): Promise<void> {}
+  protected async onAfterEnable(_context: MaterializationContext): Promise<void> { }
+  protected async onAfterDisable(_context: DematerializationContext): Promise<void> { }
 }
-

@@ -4,9 +4,12 @@ export interface ProviderSpec {
   description: string;
   targetPath: string;
   supportedComponents: Record<string, boolean>;
+  manifestPath: string;
   manifestRequirements: string;
   configFiles: string[];
   officialDocUrl: string;
+  schemaUrl?: string;
+  requiredManifestFields: string[];
   notes: string[];
 }
 
@@ -14,58 +17,70 @@ export const PROVIDER_SPECS: ProviderSpec[] = [
   {
     id: 'antigravity',
     displayName: 'Google Antigravity IDE',
-    description: 'Google\u2019s agent IDE with native plugin, skills, and MCP support.',
-    targetPath: '~/.gemini/config/plugins/<name>',
+    description: 'Google’s agentic development IDE supporting namespaced plugin bundles (skills, rules, MCP, hooks).',
+    targetPath: '~/.gemini/config/plugins/<name> (Global) / .agents/plugins/<name> (Workspace)',
     supportedComponents: { skill: true, rule: true, hook: true, mcp_server: true, tool: true },
-    manifestRequirements: 'Requires plugin.json or .claude-plugin/plugin.json; skills auto-discovered.',
-    configFiles: ['~/.gemini/config/plugins/<name>', '~/.gemini/config/skills/<name>'],
+    manifestPath: 'plugin.json',
+    manifestRequirements: 'Requires plugin.json with name and description. Discovers skills in skills/ and rules in rules/.',
+    configFiles: ['~/.gemini/config/plugins/<name>', '.agents/plugins/<name>', '.agents/mcp_config.json', '.agents/hooks.json'],
     officialDocUrl: 'https://antigravity.google/docs/plugins',
+    requiredManifestFields: ['name', 'description'],
     notes: [
-      'Hooks registered in ~/.gemini/config/hooks.json',
-      'Skills auto-discovered from ~/.gemini/config/skills/',
+      'Workspace plugins take precedence when placed in .agents/plugins/<name>',
+      'Hooks configured via named objects in .agents/hooks.json (supports PreToolUse decision protocol)',
+      'Subagent definitions configured via YAML frontmatter in .agents/agents/<name>.md',
     ],
   },
   {
     id: 'opencode',
     displayName: 'OpenCode CLI / Assistant',
-    description: 'Open-source CLI agent supporting modular plugins, skills, custom TS hooks, and rules.',
-    targetPath: '~/.config/opencode/plugins/<name>',
+    description: 'Open-source CLI coding assistant with opencode.json schema validation and TypeScript plugin SDK.',
+    targetPath: '~/.config/opencode/plugins/<name> (Global) / .opencode/plugins/<name> (Workspace)',
     supportedComponents: { skill: true, rule: true, hook: true, mcp_server: true, tool: true, module: true },
-    manifestRequirements: 'Requires plugin.json or directory component auto-discovery.',
-    configFiles: ['~/.config/opencode/opencode.json', '~/.config/opencode/opencode.jsonc'],
+    manifestPath: 'opencode.json (or opencode.jsonc)',
+    manifestRequirements: 'Validates against $schema: https://opencode.ai/config.json. Plugin manifest requires name and description.',
+    configFiles: ['~/.config/opencode/opencode.json', '.opencode/opencode.json'],
     officialDocUrl: 'https://opencode.ai/docs/plugins/',
+    schemaUrl: 'https://opencode.ai/config.json',
+    requiredManifestFields: ['name', 'description'],
     notes: [
-      'Stores hooks/modules in ~/.config/opencode/plugins/',
-      'Skills auto-discovered from ~/.config/opencode/skills/',
-      'MCP servers registered in opencode.json',
+      'Executes TypeScript in-process plugins via @opencode-ai/plugin',
+      'Skills loaded automatically from ~/.config/opencode/skills/ or .opencode/skills/',
+      'Supports opencode.json configuration with plugins, skills array, and mcpServers',
     ],
   },
   {
     id: 'claude',
     displayName: 'Claude / Claude Code Assistant',
-    description: 'Anthropic\u2019s agent with the plugin format this converter reads from.',
-    targetPath: '~/.config/claude/plugins/<name> (or claude_desktop_config.json)',
+    description: 'Anthropic’s agent platform using .claude-plugin/plugin.json manifests and 31 PascalCase lifecycle hook events.',
+    targetPath: '~/.claude/plugins/<name> (Global) / .claude/plugins/ or .agents/plugins/ (Workspace)',
     supportedComponents: { skill: true, rule: true, hook: true, mcp_server: true, tool: false },
-    manifestRequirements: 'Requires .claude-plugin/plugin.json manifest.',
-    configFiles: ['~/.claude/plugins/', '~/.claude.json'],
+    manifestPath: '.claude-plugin/plugin.json',
+    manifestRequirements: 'Requires .claude-plugin/plugin.json manifest with required `name` and `description` fields.',
+    configFiles: ['~/.claude/plugins/<name>', '~/.claude.json'],
     officialDocUrl: 'https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/plugins',
+    requiredManifestFields: ['name', 'description'],
     notes: [
-      'MCP servers merged into ~/.claude.json',
-      'Skills live in ~/.claude/skills/',
+      'Uses ${CLAUDE_PLUGIN_ROOT} variable for path portability across scripts and hook commands',
+      'Supports 31 declarative PascalCase hook events (PreToolUse, PostToolUse, SessionStart, etc.)',
+      'MCP servers declared in .mcp.json and merged into runtime configuration',
     ],
   },
   {
     id: 'codex',
     displayName: 'OpenAI Codex Extensions',
-    description: 'OpenAI CLI extensions with marketplace + plugin JSON manifests.',
-    targetPath: '~/.codex/extensions/<name>',
+    description: 'OpenAI CLI extension platform enforcing strict manifest interface validation and personal marketplace registry.',
+    targetPath: '~/.codex/plugins/<name> (Global) / .agents/plugins/<name> (Workspace)',
     supportedComponents: { skill: true, rule: true, mcp_server: true, tool: false, hook: false },
-    manifestRequirements: 'Requires plugin.json + marketplace.json for registry installs.',
-    configFiles: ['~/.codex/config.toml', '~/.codex/extensions/<name>/plugin.json'],
+    manifestPath: '.codex-plugin/plugin.json',
+    manifestRequirements: 'Requires .codex-plugin/plugin.json with required top-level name, version, description AND required interface object (displayName, shortDescription, longDescription, developerName, category, capabilities, defaultPrompt). Top-level `hooks` strictly disallowed.',
+    configFiles: ['~/.codex/config.toml', '~/.agents/plugins/marketplace.json'],
     officialDocUrl: 'https://developers.openai.com/plugins/build/plugins',
+    requiredManifestFields: ['name', 'version', 'description', 'interface', 'interface.displayName', 'interface.shortDescription', 'interface.longDescription', 'interface.developerName', 'interface.category', 'interface.capabilities', 'interface.defaultPrompt'],
     notes: [
-      'Extension dir copied wholesale into ~/.codex/extensions/',
-      'MCP servers merged into config.toml',
+      'Must be registered in marketplace.json and enabled in ~/.codex/config.toml ([plugins] <name> = "enabled")',
+      'Top-level `hooks` field strictly disallowed in manifest (causes validation error)',
+      'Requires dereferenced copies (no symlinks) due to Codex store copier constraints',
     ],
   },
 ];

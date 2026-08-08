@@ -47,14 +47,23 @@ export class DocsEngine {
     output += `==================================================\n\n`;
     output += `Description: ${spec.description}\n`;
     output += `Target Installation Path: ${spec.targetPath}\n`;
+    output += `Manifest Path: ${spec.manifestPath}\n`;
+    if (spec.schemaUrl) {
+      output += `Schema URL: ${spec.schemaUrl}\n`;
+    }
     output += `Official Documentation: ${spec.officialDocUrl}\n\n`;
 
-    output += `Supported Plugin Components:\n`;
+    output += `Required Manifest Fields:\n`;
+    for (const reqField of spec.requiredManifestFields) {
+      output += `  - ${reqField}\n`;
+    }
+
+    output += `\nSupported Plugin Components:\n`;
     for (const [comp, supported] of Object.entries(spec.supportedComponents)) {
       output += `  - ${comp.padEnd(12)}: ${supported ? '✔ Supported' : '✖ Not supported'}\n`;
     }
 
-    output += `\nManifest Requirements:\n  ${spec.manifestRequirements}\n`;
+    output += `\nManifest Specification & Validation:\n  ${spec.manifestRequirements}\n`;
 
     output += `\nConfiguration Files Touched:\n`;
     for (const file of spec.configFiles) {

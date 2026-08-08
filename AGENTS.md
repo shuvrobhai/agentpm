@@ -67,8 +67,7 @@ npx tsx src/index.ts disable Hello-World
 ## 6. Key Documentation References
 
 - [CONTEXT.md](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/CONTEXT.md) — Domain Glossary & ubiquitous vocabulary.
-- [docs/adr/](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/docs/adr/) — Architectural Decision Records.
-- [docs/sprint-plan.md](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/docs/sprint-plan.md) — Project sprint backlog & historical context.
+- [docs/adr/](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/docs/adr/) — Architectural Decision Records (ADRs 0001 - 0008).
 
 ---
 

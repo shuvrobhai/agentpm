@@ -23,6 +23,27 @@ export class GlobalStore {
     return path.join(this.getStorePath(), namespace, pluginName, version);
   }
 
+  static async findPluginPath(pluginIdentifier: string, version = 'latest'): Promise<string> {
+    if (pluginIdentifier.includes('/')) {
+      const [namespace, pluginName] = pluginIdentifier.split('/');
+      const pluginPath = this.getPluginPath(namespace, pluginName, version);
+      const exists = await fs.access(pluginPath).then(() => true).catch(() => false);
+      if (exists) return pluginPath;
+      throw new Error(`Plugin "${pluginIdentifier}@${version}" not found in global store at ${pluginPath}`);
+    }
+
+    const storePath = this.getStorePath();
+    const namespaces = await fs.readdir(storePath).catch(() => []);
+
+    for (const ns of namespaces) {
+      const candidatePath = path.join(storePath, ns, pluginIdentifier, version);
+      const exists = await fs.access(candidatePath).then(() => true).catch(() => false);
+      if (exists) return candidatePath;
+    }
+
+    throw new Error(`Plugin "${pluginIdentifier}@${version}" not found in any namespace in global store (${storePath})`);
+  }
+
   static validatePathComponent(component: string, name: string): void {
     if (!component || component === '.' || component === '..' || !SAFE_PATH_COMPONENT.test(component)) {
       throw new Error(`Invalid or unsafe ${name}: "${component}". Must contain only alphanumeric characters, underscores, hyphens, or dots.`);

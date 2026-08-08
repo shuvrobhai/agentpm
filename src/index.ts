@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { installCommand } from './commands/install.js';
 import { enableCommand } from './commands/enable.js';
+import { disableCommand } from './commands/disable.js';
 
 const program = new Command();
 
@@ -22,9 +23,17 @@ program
 program
   .command('enable')
   .description('Enable/materialize a plugin for an AI agent context')
-  .argument('<plugin>', 'Plugin name')
+  .argument('<plugin>', 'Plugin name or owner/plugin')
   .option('-g, --global', 'Enable globally across all detected agents')
   .option('-t, --target <agent>', 'Specific target agent adapter (e.g., antigravity, claude-code)')
   .action(enableCommand);
+
+program
+  .command('disable')
+  .description('Disable/dematerialize a plugin for an AI agent context')
+  .argument('<plugin>', 'Plugin name')
+  .option('-g, --global', 'Disable globally across all detected agents')
+  .option('-t, --target <agent>', 'Specific target agent adapter (e.g., antigravity, claude-code)')
+  .action(disableCommand);
 
 program.parse(process.argv);

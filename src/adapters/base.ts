@@ -1,8 +1,55 @@
 import fs from 'node:fs/promises';
+import { statSync } from 'node:fs';
 import path from 'node:path';
 import type { PortableCoreIR, ConversionResult } from '../ir/types.js';
 import { MaterializationEngine } from '../core/materialization.js';
 import { GlobalStore } from '../core/store.js';
+
+const NON_PLUGIN_DIR_NAMES = new Set([
+  'cache',
+  'data',
+  'marketplaces',
+  'commands',
+  'node_modules',
+  'logs',
+  'state',
+  'backups',
+]);
+
+const PLUGIN_MARKERS = [
+  'plugin.json',
+  'mcp.json',
+  'opencode.json',
+  'hooks.json',
+  '.claude-plugin',
+  '.codex-plugin',
+  'skills',
+  'agents',
+  'commands',
+  'rules',
+];
+
+export function isValidPluginEntry(
+  entryName: string,
+  stats: { isDirectory(): boolean; isSymbolicLink(): boolean },
+  parentDir: string
+): boolean {
+  if (stats.isSymbolicLink()) return true;
+  if (!stats.isDirectory()) return false;
+  if (NON_PLUGIN_DIR_NAMES.has(entryName.toLowerCase())) return false;
+
+  const candidateDir = path.join(parentDir, entryName);
+  for (const marker of PLUGIN_MARKERS) {
+    try {
+      statSync(path.join(candidateDir, marker));
+      return true;
+    } catch {
+      // marker not present, try next
+    }
+  }
+
+  return false;
+}
 
 export interface ActivePluginInfo {
   agent: string;
@@ -125,6 +172,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
         const symlinkPath = path.join(dir, entry);
         const lstat = await fs.lstat(symlinkPath).catch(() => null);
         if (!lstat) continue;
+        if (!isValidPluginEntry(entry, lstat, dir)) continue;
 
         let targetPath: string | undefined;
         let isBroken = false;

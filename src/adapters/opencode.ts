@@ -153,14 +153,10 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     return {
       global: [
         path.join(os.homedir(), '.config', 'opencode', 'plugins'),
-        path.join(os.homedir(), '.config', 'opencode', 'skills'),
-        path.join(os.homedir(), '.config', 'opencode', 'commands'),
       ],
       local: [
         path.join(process.cwd(), '.agents', 'plugins'),
         path.join(process.cwd(), '.opencode', 'plugins'),
-        path.join(process.cwd(), '.opencode', 'skills'),
-        path.join(process.cwd(), '.opencode', 'commands'),
       ],
     };
   }

@@ -19,6 +19,9 @@ This document serves as the comprehensive architectural reference for probable f
 | **3. Agent Discovery** | Missing rule trigger metadata | Google Antigravity | Antigravity rules in `.agents/rules/` require YAML frontmatter (`globs`, `alwaysApply`). | Generate YAML frontmatter when extracting markdown rules into `.agents/rules/`. |
 | **4. Store & Namespace** | Plugin collision on same name from different authors | All Providers | Installing `obra/superpowers` and `alice/superpowers` overwrites destination folders. | Use vendor-tiered store (`plugins/<vendor>/<namespace>/<plugin>/<version>/`) and collision warnings. |
 | **4. Store & Namespace** | Broken symlinks after manual file deletion | All Providers | User deletes upstream clone without running `plugins remove`. | Provide a `plugins doctor` command to detect and purge dangling symlinks. |
+| **5. Discovery & Inspection** | `.agents/skills` folders misclassified as workspace plugins | Google Antigravity | `AntigravityAdapter.candidateSearchDirs` scans `.agents/skills` directly instead of `.agents/plugins`. | Exclude `.agents/skills` from plugin discovery paths; only search `.agents/plugins`. |
+| **5. Discovery & Inspection** | Internal provider metadata & cache files enumerated as plugins | Claude Code, OpenAI Codex, OpenCode | `findActive()` does raw `readdir()` without filtering internal files (`blocklist.json`, `cache`, `marketplaces`, `*.md`). | Implement `isValidPluginContainer()` filter to verify entries contain valid plugin manifests or structures. |
+| **5. Discovery & Inspection** | Workspace plugins omitted when operating from subdirectories | All Providers | Local plugin search uses `process.cwd()` instead of walking up to workspace root `.agents/plugins`. | Resolve workspace root (searching up to `.agents/` or `.git/`) before querying local materializations. |
 
 ---
 
@@ -117,3 +120,22 @@ This document serves as the comprehensive architectural reference for probable f
   - Verifies whether symlink targets exist on disk.
   - Validates manifests against native schema rules.
   - Offers one-click automatic pruning of orphaned links.
+
+---
+
+### 7. Standalone Skills Directory (`.agents/skills`) Misclassified as Workspace Plugins
+- **The Issue:** In Antigravity projects, `.agents/skills/<skill-name>/` houses standalone skill instruction packages. When `AntigravityAdapter.candidateSearchDirs` includes `.agents/skills`, `plugins list` mistakenly treats every standalone skill as an active materialized plugin.
+- **The Solution:** Remove `.agents/skills` from candidate search directories for local plugins. Only treat `.agents/plugins` as plugin container roots. Standalone skills should be managed via skill tools or explicitly bundled inside plugins.
+
+---
+
+### 8. Provider Metadata Files & Cache Directories Enumerated as Plugins
+- **The Issue:** Native agent directories like `~/.claude/plugins/`, `~/.codex/plugins/`, and `~/.config/opencode/` contain internal index files (`installed_plugins.json`, `known_marketplaces.json`, `blocklist.json`, `plugin-catalog-cache.json`) and cache folders (`cache`, `data`). Raw `readdir()` enumerates these files and lists them as active plugins.
+- **The Solution:** Implement a structural plugin validator `isValidPluginContainer()` in `BaseAgentAdapter` and `provider-inspector` that ignores metadata JSON files, cache directories, and non-plugin files unless they contain a recognized manifest (`plugin.json`, `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `opencode.json`, or valid plugin layout).
+
+---
+
+### 9. Local Workspace Materialization Missing when Operating from Subdirectories
+- **The Issue:** `plugins list` evaluates local materialization using `process.cwd()`. If the user executes `plugins list` from a subdirectory or if `.agents/plugins` is absent at `cwd`, local plugins are reported as missing even when defined in the repository root.
+- **The Solution:** Resolve workspace root dynamically by traversing upwards to find `.agents/` or `.git/`, guaranteeing consistent workspace plugin discovery regardless of shell working directory.
+

@@ -18,4 +18,7 @@
 - **Adapter Registry (AdapterRegistry)**: The centralized registry and discovery module that manages all registered target `AgentAdapter` instances, directory topology discovery, active workspace and global materialization scanning, and multi-agent health diagnostic auditing.
 - **BaseAgentAdapter**: The deep abstract base class that encapsulates the complete agent materialization lifecycle (`enable`, `disable`, `detect`, `resolveVersion`, copy vs. symlink dereferencing) and directory topology across all target coding agents. Concrete adapters only provide identity, directory paths, pure `convert(portableCore)` native emission, and optional lifecycle hooks (`onAfterEnable`/`onAfterDisable`).
 - **Native Codex Manifest Validator (`src/core/codex-validator.ts`)**: Pure TypeScript schema validation engine verifying that Codex manifests contain valid `interface` metadata, `capabilities` arrays, and no root `hooks`.
+- **Plugin Structural Validator (`isValidPluginEntry`)**: Discovery filter that inspects target provider directories to differentiate actual plugin packages from provider index manifests, blocklists, cache directories, or standalone command files.
+- **Workspace Root Discovery**: Recursive directory resolution mechanism that locates the enclosing workspace root (`.agents/` or `.git/`) to ensure consistent local plugin materialization discovery regardless of current execution directory.
+
 

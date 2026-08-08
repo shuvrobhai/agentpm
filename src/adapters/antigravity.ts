@@ -55,7 +55,6 @@ export class AntigravityAdapter extends BaseAgentAdapter {
       global: [path.join(os.homedir(), '.gemini', 'config', 'plugins')],
       local: [
         path.join(process.cwd(), '.agents', 'plugins'),
-        path.join(process.cwd(), '.agents', 'skills'),
       ],
     };
   }

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { AdapterRegistry } from '../adapters/index.js';
+import { isValidPluginEntry } from '../adapters/base.js';
 
 export interface InstalledItem {
   name: string;
@@ -38,8 +39,12 @@ export async function inspectProviders(provider?: string): Promise<InstalledItem
 
         for (const entry of entries) {
           if (entry.startsWith('.')) continue;
-          found += 1;
           const itemPath = path.join(dir, entry);
+          const lstat = await fs.lstat(itemPath).catch(() => null);
+          if (!lstat) continue;
+          if (!isValidPluginEntry(entry, lstat, dir)) continue;
+
+          found += 1;
           const item = { name: entry, type: label, path: itemPath };
           allItems.push(item);
           console.log(`├── [${label}] ${entry}`);

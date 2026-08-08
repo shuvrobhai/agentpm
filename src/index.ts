@@ -18,7 +18,9 @@ program
 
 program
   .command('install')
-  .description('Install a plugin package into the global store')
+  .alias('add')
+  .alias('a')
+  .description('Install a plugin package into the central global store')
   .argument('<repo>', 'GitHub repository or package identifier (e.g. user/repo or user/repo#v1.0.0)')
   .option('-g, --global', 'Install globally')
   .option('-f, --force', 'Force re-download if package already exists')
@@ -26,6 +28,7 @@ program
 
 program
   .command('enable')
+  .alias('e')
   .description('Enable/materialize a plugin for an AI agent context')
   .argument('<plugin>', 'Plugin name or owner/plugin')
   .option('-g, --global', 'Enable globally across all detected agents')
@@ -35,6 +38,7 @@ program
 
 program
   .command('disable')
+  .alias('d')
   .description('Disable/dematerialize a plugin for an AI agent context')
   .argument('<plugin>', 'Plugin name')
   .option('-g, --global', 'Disable globally across all detected agents')
@@ -43,6 +47,7 @@ program
 
 program
   .command('list')
+  .alias('ls')
   .description('List materialized workspace plugins or global store inventory')
   .option('-g, --global', 'List all installed plugins in central global store')
   .option('--json', 'Output results formatted as JSON')
@@ -50,6 +55,7 @@ program
 
 program
   .command('info')
+  .alias('i')
   .description('Inspect plugin capabilities, manifest headers, and materialization state')
   .argument('<plugin>', 'Plugin name or owner/plugin')
   .option('--json', 'Output details formatted as JSON')
@@ -58,6 +64,7 @@ program
 program
   .command('uninstall')
   .alias('remove')
+  .alias('rm')
   .description('Dematerialize active symlinks and purge plugin from global store')
   .argument('<plugin>', 'Plugin name or owner/plugin')
   .option('-g, --global', 'Also dematerialize from global agent directories')
@@ -73,4 +80,17 @@ program
   .option('-o, --out <dir>', 'Output destination directory')
   .action(convertCommand);
 
+program.addHelpText('after', `
+Examples:
+  $ agentpm install octocat/Hello-World
+  $ agentpm add anthropics/knowledge-work-plugins/tree/main/pdf-viewer
+  $ agentpm enable pdf-viewer --target antigravity
+  $ agentpm enable pdf-viewer --copy
+  $ agentpm disable pdf-viewer
+  $ agentpm list --global
+  $ agentpm info pdf-viewer
+  $ agentpm convert ./my-claude-plugin --target antigravity
+`);
+
 program.parse(process.argv);
+

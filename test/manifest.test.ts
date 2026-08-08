@@ -69,4 +69,21 @@ describe('PackageManifest Unit Tests', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
+
+  test('PackageManifest.validateSchema validates JSON schema fields', () => {
+    const valid = PackageManifest.validateSchema({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'test-plugin',
+      version: '1.0.0',
+    });
+    assert.equal(valid.valid, true);
+    assert.equal(valid.errors.length, 0);
+
+    const invalid = PackageManifest.validateSchema({
+      name: 123,
+      version: true,
+    });
+    assert.equal(invalid.valid, false);
+    assert.ok(invalid.errors.length > 0);
+  });
 });

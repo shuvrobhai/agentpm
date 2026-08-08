@@ -19,6 +19,7 @@ export class PackageManifest {
   version: string;
   description: string;
   author: AuthorDetails;
+  schema: string | null;
   capabilities: ManifestCapabilities;
   pluginPath: string;
   manifestPath: string | null;
@@ -29,6 +30,7 @@ export class PackageManifest {
     version?: string;
     description?: string;
     author?: AuthorDetails;
+    schema?: string | null;
     capabilities?: Partial<ManifestCapabilities>;
     pluginPath: string;
     manifestPath?: string | null;
@@ -38,6 +40,7 @@ export class PackageManifest {
     this.version = data.version || '1.0.0';
     this.description = data.description || '';
     this.author = data.author || {};
+    this.schema = data.schema || null;
     this.pluginPath = data.pluginPath;
     this.manifestPath = data.manifestPath || null;
     this.isOpenCanonicalFormat = data.isOpenCanonicalFormat !== false;
@@ -87,6 +90,7 @@ export class PackageManifest {
     const version = manifestData?.version || '1.0.0';
     const description = manifestData?.description || '';
     const author = manifestData?.author || {};
+    const schema = manifestData?.$schema || null;
 
     const capabilities = await this.inspectCapabilities(pluginPath);
 
@@ -95,11 +99,37 @@ export class PackageManifest {
       version,
       description,
       author,
+      schema,
       capabilities,
       pluginPath,
       manifestPath: loadedManifestPath,
       isOpenCanonicalFormat: isCanonical,
     });
+  }
+
+  static validateSchema(manifestData: any): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!manifestData || typeof manifestData !== 'object') {
+      return { valid: false, errors: ['Manifest data is not a valid JSON object'] };
+    }
+
+    if (manifestData.name && typeof manifestData.name !== 'string') {
+      errors.push('Field "name" must be a string');
+    }
+
+    if (manifestData.version && typeof manifestData.version !== 'string') {
+      errors.push('Field "version" must be a string');
+    }
+
+    if (manifestData.$schema && typeof manifestData.$schema !== 'string') {
+      errors.push('Field "$schema" must be a string URL');
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
   }
 
   private static async inspectCapabilities(pluginPath: string): Promise<ManifestCapabilities> {

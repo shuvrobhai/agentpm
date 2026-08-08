@@ -28,8 +28,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "commander": "^15.0.0",
-    "gray-matter": "^4.0.3"
+    "commander": "^15.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",

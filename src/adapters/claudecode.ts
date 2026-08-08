@@ -29,7 +29,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     console.log(`[ClaudeCodeAdapter] Uninstalled plugin ${pluginName} (${scope})`);
   }
 
-  async enable(pluginName: string, version = 'latest', scope: 'global' | 'local'): Promise<void> {
+  async enable(
+    pluginName: string,
+    version = 'latest',
+    scope: 'global' | 'local' = 'local',
+    options?: { copy?: boolean }
+  ): Promise<void> {
     const sourcePath = await GlobalStore.findPluginPath(pluginName, version);
     const baseDir = scope === 'local'
       ? path.join(process.cwd(), '.claudecode', 'skills')
@@ -48,11 +53,16 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       await fs.rm(linkPath, { recursive: true, force: true });
     }
 
-    await fs.symlink(sourcePath, linkPath, 'dir');
-    console.log(`[ClaudeCodeAdapter] Materialized symlink: ${linkPath} -> ${sourcePath}`);
+    if (options?.copy) {
+      await GlobalStore.copyDirectoryDereferenced(sourcePath, linkPath);
+      console.log(`[ClaudeCodeAdapter] Materialized copied folder: ${linkPath} (isolated edit mode)`);
+    } else {
+      await fs.symlink(sourcePath, linkPath, 'dir');
+      console.log(`[ClaudeCodeAdapter] Materialized symlink: ${linkPath} -> ${sourcePath}`);
+    }
   }
 
-  async disable(pluginName: string, scope: 'global' | 'local'): Promise<void> {
+  async disable(pluginName: string, scope: 'global' | 'local' = 'local'): Promise<void> {
     const baseDir = scope === 'local'
       ? path.join(process.cwd(), '.claudecode', 'skills')
       : path.join(os.homedir(), '.claude', 'skills');

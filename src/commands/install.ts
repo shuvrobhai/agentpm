@@ -1,5 +1,6 @@
 import { GlobalStore } from '../core/store.js';
 import { downloadPlugin } from '../core/fetcher.js';
+import { PluginConverter } from '../core/converter.js';
 
 export async function installCommand(repo: string, options: { global?: boolean; force?: boolean }): Promise<void> {
   try {
@@ -12,7 +13,16 @@ export async function installCommand(repo: string, options: { global?: boolean; 
       console.log(`Plugin ${result.namespace}/${result.pluginName}@${result.version} is already installed at ${result.targetPath}.`);
       console.log(`Use '--force' to redownload.`);
     } else {
-      console.log(`Successfully installed ${result.namespace}/${result.pluginName}@${result.version} to:`);
+      console.log(`Converting downloaded plugin to Open Canonical Format...`);
+      await PluginConverter.convertPlugin(result.targetPath, result.targetPath, {
+        targetAdapter: 'antigravity',
+        memoryFilename: 'AGENTS.md',
+        rootVarName: 'PLUGIN_ROOT',
+        expandMcpPaths: true,
+        neutralizeTerms: true,
+      });
+
+      console.log(`Successfully installed ${result.namespace}/${result.pluginName}@${result.version} in Open Canonical Format to:`);
       console.log(`  ${result.targetPath}`);
     }
 

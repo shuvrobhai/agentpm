@@ -32,11 +32,11 @@ describe('Agent Adapters Unit Tests', () => {
     await fs.mkdir(mockSource, { recursive: true });
 
     const adapter = new AntigravityAdapter();
-    const localSkillsDir = path.join(process.cwd(), '.agents', 'skills');
-    const linkPath = path.join(localSkillsDir, 'test-adapter-plugin');
+    const localPluginsDir = path.join(process.cwd(), '.agents', 'plugins');
+    const linkPath = path.join(localPluginsDir, 'test-adapter-plugin');
 
     try {
-      // Test Enable
+      // Test Enable (symlink mode)
       await adapter.enable('test-adapter-plugin', 'latest', 'local');
       const lstat = await fs.lstat(linkPath);
       assert.ok(lstat.isSymbolicLink(), 'Target should be a symbolic link');
@@ -51,6 +51,36 @@ describe('Agent Adapters Unit Tests', () => {
     } finally {
       await fs.rm(linkPath, { recursive: true, force: true }).catch(() => {});
       await fs.rm(path.join(storePath, 'test-adapter-ns'), { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  test('AntigravityAdapter enable with copy mode', async () => {
+    const storePath = GlobalStore.getStorePath();
+    const mockSource = path.join(storePath, 'test-copy-ns', 'test-copy-plugin', 'latest');
+    await fs.mkdir(mockSource, { recursive: true });
+    await fs.writeFile(path.join(mockSource, 'test.txt'), 'hello copy', 'utf8');
+
+    const adapter = new AntigravityAdapter();
+    const localPluginsDir = path.join(process.cwd(), '.agents', 'plugins');
+    const linkPath = path.join(localPluginsDir, 'test-copy-plugin');
+
+    try {
+      // Test Enable (copy mode)
+      await adapter.enable('test-copy-plugin', 'latest', 'local', { copy: true });
+      const lstat = await fs.lstat(linkPath);
+      assert.ok(lstat.isDirectory(), 'Target should be a real directory');
+      assert.ok(!lstat.isSymbolicLink(), 'Target should NOT be a symbolic link');
+
+      const fileContent = await fs.readFile(path.join(linkPath, 'test.txt'), 'utf8');
+      assert.equal(fileContent, 'hello copy');
+
+      // Test Disable
+      await adapter.disable('test-copy-plugin', 'local');
+      const existsAfterDisable = await fs.lstat(linkPath).then(() => true).catch(() => false);
+      assert.equal(existsAfterDisable, false, 'Copied folder should be removed after disable');
+    } finally {
+      await fs.rm(linkPath, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(path.join(storePath, 'test-copy-ns'), { recursive: true, force: true }).catch(() => {});
     }
   });
 

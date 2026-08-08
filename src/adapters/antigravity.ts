@@ -34,11 +34,18 @@ export class AntigravityAdapter implements AgentAdapter {
     console.log(`[AntigravityAdapter] Uninstalled plugin ${pluginName} (${scope})`);
   }
 
-  async enable(pluginName: string, version = 'latest', scope: 'global' | 'local'): Promise<void> {
+  async enable(
+    pluginName: string,
+    version = 'latest',
+    scope: 'global' | 'local' = 'local',
+    options?: { copy?: boolean }
+  ): Promise<void> {
     const rawSourcePath = await GlobalStore.findPluginPath(pluginName, version);
+
+    // Primary workspace materialization directory: .agents/plugins/
     const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.agents', 'skills')
-      : path.join(os.homedir(), '.gemini', 'config', 'skills');
+      ? path.join(process.cwd(), '.agents', 'plugins')
+      : path.join(os.homedir(), '.gemini', 'config', 'plugins');
 
     await GlobalStore.ensureDir(baseDir);
 
@@ -59,7 +66,6 @@ export class AntigravityAdapter implements AgentAdapter {
     });
 
     const targetSourcePath = conversionResult.filesModified > 0 ? adaptedDir : rawSourcePath;
-
     const linkPath = path.join(baseDir, pluginDirName);
 
     const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
@@ -67,23 +73,40 @@ export class AntigravityAdapter implements AgentAdapter {
       await fs.rm(linkPath, { recursive: true, force: true });
     }
 
-    await fs.symlink(targetSourcePath, linkPath, 'dir');
-    console.log(`[AntigravityAdapter] Materialized symlink: ${linkPath} -> ${targetSourcePath} (${conversionResult.filesModified} files adapted)`);
+    if (options?.copy) {
+      await GlobalStore.copyDirectoryDereferenced(targetSourcePath, linkPath);
+      console.log(`[AntigravityAdapter] Materialized copied folder: ${linkPath} (isolated edit mode)`);
+    } else {
+      await fs.symlink(targetSourcePath, linkPath, 'dir');
+      console.log(`[AntigravityAdapter] Materialized symlink: ${linkPath} -> ${targetSourcePath} (${conversionResult.filesModified} files adapted)`);
+    }
   }
 
-  async disable(pluginName: string, scope: 'global' | 'local'): Promise<void> {
-    const baseDir = scope === 'local'
+  async disable(pluginName: string, scope: 'global' | 'local' = 'local'): Promise<void> {
+    const pluginsDir = scope === 'local'
+      ? path.join(process.cwd(), '.agents', 'plugins')
+      : path.join(os.homedir(), '.gemini', 'config', 'plugins');
+
+    const skillsDir = scope === 'local'
       ? path.join(process.cwd(), '.agents', 'skills')
       : path.join(os.homedir(), '.gemini', 'config', 'skills');
 
-    const linkPath = path.join(baseDir, pluginName);
-    const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
+    const pluginLink = path.join(pluginsDir, pluginName);
+    const skillLink = path.join(skillsDir, pluginName);
 
-    if (exists) {
-      await fs.rm(linkPath, { recursive: true, force: true });
-      console.log(`[AntigravityAdapter] Removed symlink: ${linkPath}`);
-    } else {
-      console.log(`[AntigravityAdapter] No active symlink found for ${pluginName} at ${linkPath}`);
+    let removed = false;
+
+    for (const linkPath of [pluginLink, skillLink]) {
+      const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
+      if (exists) {
+        await fs.rm(linkPath, { recursive: true, force: true });
+        console.log(`[AntigravityAdapter] Removed materialization link: ${linkPath}`);
+        removed = true;
+      }
+    }
+
+    if (!removed) {
+      console.log(`[AntigravityAdapter] No active materialization found for ${pluginName}`);
     }
   }
 }

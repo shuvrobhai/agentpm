@@ -27,9 +27,16 @@ export async function convertCommand(
     const rootVarName = options.varPrefix || 'PLUGIN_ROOT';
 
     const pluginName = path.basename(sourcePath);
-    const outDir = options.out
-      ? path.resolve(options.out)
-      : GlobalStore.getAdaptedPluginPath(targetAdapter, 'manual-convert', pluginName, 'latest');
+
+    let outDir: string;
+    if (options.out) {
+      outDir = path.resolve(options.out);
+    } else if (sourceExists && targetAdapter === 'antigravity') {
+      // Default local workspace conversion output to .agents/plugins/<pluginName>
+      outDir = path.join(process.cwd(), '.agents', 'plugins', pluginName);
+    } else {
+      outDir = GlobalStore.getAdaptedPluginPath(targetAdapter, 'manual-convert', pluginName, 'latest');
+    }
 
     console.log(`Converting plugin from "${sourcePath}"...`);
     console.log(`Target Adapter: ${targetAdapter}`);
@@ -51,7 +58,7 @@ export async function convertCommand(
     console.log(`- Variables rewritten: ${result.variablesRewritten}`);
     console.log(`- MCP paths expanded: ${result.mcpPathsExpanded}`);
     console.log(`- Rules/memory transpiled: ${result.rulesTranspiled}`);
-    console.log(`\nPlugin successfully converted to: ${outDir}`);
+    console.log(`\nPlugin successfully converted to workspace: ${outDir}`);
 
   } catch (err: any) {
     console.error(`Error converting plugin: ${err.message}`);

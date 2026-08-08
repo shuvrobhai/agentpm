@@ -30,6 +30,7 @@ program
   .argument('<plugin>', 'Plugin name or owner/plugin')
   .option('-g, --global', 'Enable globally across all detected agents')
   .option('-t, --target <agent>', 'Specific target agent adapter (e.g., antigravity, claude-code)')
+  .option('-c, --copy', 'Copy plugin files into workspace instead of directory symlinking (isolated edit mode)')
   .action(enableCommand);
 
 program

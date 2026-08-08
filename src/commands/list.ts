@@ -8,7 +8,7 @@ export interface ActiveSymlinkInfo {
   scope: 'local' | 'global';
   pluginName: string;
   symlinkPath: string;
-  targetPath?: string;
+  targetPath?: string | undefined;
 }
 
 export async function listCommand(options: { global?: boolean; json?: boolean }): Promise<void> {
@@ -36,8 +36,10 @@ export async function listCommand(options: { global?: boolean; json?: boolean })
     // Default: Inspect local workspace materializations
     const symlinks: ActiveSymlinkInfo[] = [];
     const targets = [
+      { agent: 'antigravity', scope: 'local' as const, dir: path.join(process.cwd(), '.agents', 'plugins') },
       { agent: 'antigravity', scope: 'local' as const, dir: path.join(process.cwd(), '.agents', 'skills') },
       { agent: 'claude-code', scope: 'local' as const, dir: path.join(process.cwd(), '.claudecode', 'skills') },
+      { agent: 'codex', scope: 'local' as const, dir: path.join(process.cwd(), '.codex', 'skills') },
     ];
 
     for (const target of targets) {

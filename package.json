@@ -1,17 +1,21 @@
 {
   "name": "agentpm",
-  "version": "0.1.0",
-  "description": "Universal Cross-Agent Plugin Manager",
+  "version": "0.2.0",
+  "description": "Cross-agent Agent Plugins manager: add, use, remove, list, find, update, init, convert.",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "bin": {
+    "plugins": "./dist/index.js",
     "agentpm": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "npx tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts"
   },
   "keywords": [
     "agent",
@@ -28,8 +32,8 @@
     "simple-git": "^3.36.0"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.1.2",
     "tsx": "^4.23.11",
-    "typescript": "^7.0.2"
+    "typescript": "7.0.2"
   }
 }

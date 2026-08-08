@@ -1,30 +1,92 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { addCommand } from './commands/add.js';
 import { installCommand } from './commands/install.js';
+import { useCommand } from './commands/use.js';
+import { uninstallCommand } from './commands/uninstall.js';
 import { enableCommand } from './commands/enable.js';
 import { disableCommand } from './commands/disable.js';
 import { listCommand } from './commands/list.js';
 import { infoCommand } from './commands/info.js';
-import { uninstallCommand } from './commands/uninstall.js';
+import { findCommand } from './commands/find.js';
+import { updateCommand } from './commands/update.js';
+import { initCommand } from './commands/init.js';
 import { convertCommand } from './commands/convert.js';
 
 const program = new Command();
 
 program
-  .name('agentpm')
-  .description('Universal Cross-Agent Plugin Manager')
-  .version('0.1.0');
+  .name('plugins')
+  .description('Manage cross-agent Agent Plugins: add, use, remove, list, find, update, init.')
+  .version('0.2.0');
 
 program
-  .command('install')
-  .alias('add')
-  .alias('a')
-  .description('Install a plugin package into the central global store')
-  .argument('<repo>', 'GitHub repository or package identifier (e.g. user/repo or user/repo#v1.0.0)')
-  .option('-g, --global', 'Install globally')
+  .command('add')
+  .description('Add a plugin package and enable it (alias: install, a)')
+  .aliases(['a', 'install'])
+  .argument('<package>', 'GitHub repository or package identifier (e.g. user/repo or user/repo#v1.0.0)')
+  .option('-t, --target <agent>', 'Target agent adapter (e.g., antigravity, agent-plugins)', 'agent-plugins')
+  .option('-g, --global', 'Enable globally across all detected agents')
+  .option('-c, --copy', 'Copy plugin files instead of directory symlinking')
   .option('-f, --force', 'Force re-download if package already exists')
-  .action(installCommand);
+  .option('--no-enable', 'Install into the store without enabling')
+  .action(addCommand);
+
+program
+  .command('use')
+  .description('Generate a prompt for using a plugin without installing it')
+  .argument('<package>', 'Package identifier (owner/repo or owner/repo@plugin), or local path')
+  .option('-s, --skill <skill>', 'Generate a prompt for one specific skill')
+  .action(useCommand);
+
+program
+  .command('remove')
+  .description('Remove installed plugins (alias: rm, uninstall)')
+  .aliases(['rm', 'uninstall'])
+  .argument('[plugins...]', 'Plugin names to remove')
+  .option('-g, --global', 'Also dematerialize from global agent directories')
+  .action(async (plugins: string[], options: { global?: boolean }) => {
+    if (plugins.length === 0) {
+      console.log('No plugins specified. List installed plugins with: plugins list');
+      return;
+    }
+    for (const plugin of plugins) {
+      const opts: { global?: boolean } = {};
+      if (options.global !== undefined) opts.global = options.global;
+      await uninstallCommand(plugin, opts);
+    }
+  });
+
+program
+  .command('list')
+  .alias('ls')
+  .description('List installed plugins (workspace or global store)')
+  .option('-g, --global', 'List all installed plugins in the central global store')
+  .option('--json', 'Output results formatted as JSON')
+  .action(listCommand);
+
+program
+  .command('find')
+  .description('Search GitHub for plugin packages')
+  .argument('[query]', 'Search keyword (e.g., pdf, skills, mcp)')
+  .option('--owner <owner>', 'Search only repositories from a GitHub owner')
+  .action(findCommand);
+
+program
+  .command('update')
+  .alias('upgrade')
+  .description('Update plugins to latest versions')
+  .argument('[plugins...]', 'Plugin names to update (default: all installed)')
+  .option('-t, --target <agent>', 'Target agent adapter for re-conversion', 'agent-plugins')
+  .action(updateCommand);
+
+program
+  .command('init')
+  .description('Initialize a new plugin skeleton (plugin.json + skills/<name>/SKILL.md)')
+  .argument('[name]', 'Plugin name')
+  .option('-o, --out <dir>', 'Output destination directory')
+  .action(initCommand);
 
 program
   .command('enable')
@@ -46,14 +108,6 @@ program
   .action(disableCommand);
 
 program
-  .command('list')
-  .alias('ls')
-  .description('List materialized workspace plugins or global store inventory')
-  .option('-g, --global', 'List all installed plugins in central global store')
-  .option('--json', 'Output results formatted as JSON')
-  .action(listCommand);
-
-program
   .command('info')
   .alias('i')
   .description('Inspect plugin capabilities, manifest headers, and materialization state')
@@ -62,19 +116,10 @@ program
   .action(infoCommand);
 
 program
-  .command('uninstall')
-  .alias('remove')
-  .alias('rm')
-  .description('Dematerialize active symlinks and purge plugin from global store')
-  .argument('<plugin>', 'Plugin name or owner/plugin')
-  .option('-g, --global', 'Also dematerialize from global agent directories')
-  .action(uninstallCommand);
-
-program
   .command('convert')
   .description('Convert vendor-specific plugin files to target agent-agnostic specs')
   .argument('<plugin>', 'Plugin directory path or installed plugin identifier')
-  .option('-t, --target <agent>', 'Target agent adapter (e.g., antigravity, claude-code)', 'antigravity')
+  .option('-t, --target <agent>', 'Target agent adapter (e.g., antigravity, claude-code, agent-plugins)', 'antigravity')
   .option('-m, --memory <filename>', 'Memory filename (AGENTS.md or CLAUDE.md)', 'AGENTS.md')
   .option('-v, --var-prefix <prefix>', 'Root variable placeholder prefix', 'PLUGIN_ROOT')
   .option('-o, --out <dir>', 'Output destination directory')
@@ -82,15 +127,18 @@ program
 
 program.addHelpText('after', `
 Examples:
-  $ agentpm install octocat/Hello-World
-  $ agentpm add anthropics/knowledge-work-plugins/tree/main/pdf-viewer
-  $ agentpm enable pdf-viewer --target antigravity
-  $ agentpm enable pdf-viewer --copy
-  $ agentpm disable pdf-viewer
-  $ agentpm list --global
-  $ agentpm info pdf-viewer
-  $ agentpm convert ./my-claude-plugin --target antigravity
+  $ plugins add octocat/Hello-World
+  $ plugins add anthropics/knowledge-work-plugins/tree/main/pdf-viewer --no-enable
+  $ plugins use vercel-labs/agent-skills@pdf-viewer
+  $ plugins remove pdf-viewer
+  $ plugins list --global
+  $ plugins find pdf
+  $ plugins update
+  $ plugins init my-plugin
+  $ plugins enable pdf-viewer --target antigravity
+  $ plugins disable pdf-viewer
+  $ plugins info pdf-viewer
+  $ plugins convert ./my-claude-plugin --target agent-plugins
 `);
 
 program.parse(process.argv);
-

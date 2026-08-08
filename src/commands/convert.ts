@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { GlobalStore } from '../core/store.js';
 import { PluginConverter } from '../core/converter.js';
+import { getAdapter } from '../adapters/index.js';
 
 export interface ConvertCommandOptions {
   target?: string;
@@ -22,7 +23,8 @@ export async function convertCommand(
       sourcePath = await GlobalStore.findPluginPath(pluginPathOrIdentifier);
     }
 
-    const targetAdapter = options.target || 'antigravity';
+    const targetAdapterName = options.target || 'antigravity';
+    const adapter = getAdapter(targetAdapterName);
     const memoryFilename = (options.memory as 'AGENTS.md' | 'CLAUDE.md') || 'AGENTS.md';
     const rootVarName = options.varPrefix || 'PLUGIN_ROOT';
 
@@ -31,21 +33,21 @@ export async function convertCommand(
     let outDir: string;
     if (options.out) {
       outDir = path.resolve(options.out);
-    } else if (sourceExists && targetAdapter === 'antigravity') {
-      // Default local workspace conversion output to .agents/plugins/<pluginName>
-      outDir = path.join(process.cwd(), '.agents', 'plugins', pluginName);
+    } else if (sourceExists) {
+      // Default local workspace conversion output to the target adapter's local plugin folder
+      outDir = adapter.getLocalPluginDir(pluginName);
     } else {
-      outDir = GlobalStore.getAdaptedPluginPath(targetAdapter, 'manual-convert', pluginName, 'latest');
+      outDir = adapter.getPluginDir(pluginName, 'latest');
     }
 
     console.log(`Converting plugin from "${sourcePath}"...`);
-    console.log(`Target Adapter: ${targetAdapter}`);
+    console.log(`Target Adapter: ${adapter.name}`);
     console.log(`Memory Filename: ${memoryFilename}`);
     console.log(`Variable Prefix: \${${rootVarName}}`);
     console.log(`Output Directory: ${outDir}`);
 
     const result = await PluginConverter.convertPlugin(sourcePath, outDir, {
-      targetAdapter,
+      targetAdapter: adapter.name,
       memoryFilename,
       rootVarName,
       expandMcpPaths: true,
@@ -61,7 +63,7 @@ export async function convertCommand(
     console.log(`\nPlugin successfully converted to workspace: ${outDir}`);
 
   } catch (err: any) {
-    console.error(`Error converting plugin: ${err.message}`);
-    process.exitCode = 1;
+    console.error('Error converting plugin:', err);
+    process.exit(1);
   }
 }

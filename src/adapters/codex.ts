@@ -1,40 +1,49 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import type { AgentAdapter } from './base.js';
+import { BaseAgentAdapter } from './base.js';
+import type { MaterializationContext, DematerializationContext, AdapterHealthReport } from './base.js';
 import type { PortableCoreIR, ConversionResult, FileOutput } from '../ir/types.js';
 import { formatAgentSkill, skillSupportingFilesWarning } from '../ir/skill-format.js';
 import { serializeNativeHooks } from '../ir/native-hooks.js';
-import { buildNativeManifestMetadata } from '../core/v1-manifest.js';
-import { MaterializationEngine } from '../core/materialization.js';
-import { GlobalStore } from '../core/store.js';
 import { validateCodexManifest } from '../core/codex-validator.js';
 
-export class CodexAdapter implements AgentAdapter {
+export class CodexAdapter extends BaseAgentAdapter {
   name = 'codex';
   displayName = 'Codex';
+  protected override logTag = 'CodexAdapter';
 
-  async detect(scope: 'global' | 'local' = 'local'): Promise<boolean> {
-    if (scope === 'local') {
-      const localCodex = path.join(process.cwd(), '.codex');
-      const localPlugin = path.join(process.cwd(), '.codex-plugin');
-      const localMarketplace = path.join(process.cwd(), '.agents', 'plugins', 'marketplace.json');
-      const hasCodex = await fs.access(localCodex).then(() => true).catch(() => false);
-      const hasPlugin = await fs.access(localPlugin).then(() => true).catch(() => false);
-      const hasMarketplace = await fs.access(localMarketplace).then(() => true).catch(() => false);
-      return hasCodex || hasPlugin || hasMarketplace;
-    } else {
-      const globalCodex = path.join(os.homedir(), '.codex');
-      return await fs.access(globalCodex).then(() => true).catch(() => false);
-    }
+  override get detectProbes(): { global: string[]; local: string[] } {
+    return {
+      global: [path.join(os.homedir(), '.codex')],
+      local: [
+        path.join(process.cwd(), '.codex'),
+        path.join(process.cwd(), '.codex-plugin'),
+        path.join(process.cwd(), '.agents', 'plugins', 'marketplace.json'),
+      ],
+    };
+  }
+
+  get globalPluginDir(): string {
+    return path.join(os.homedir(), '.codex', 'plugins');
+  }
+
+  get localPluginDir(): string {
+    return path.join(process.cwd(), '.codex');
+  }
+
+  override get candidateSearchDirs(): { global: string[]; local: string[] } {
+    return {
+      global: [path.join(os.homedir(), '.codex', 'plugins')],
+      local: [
+        path.join(process.cwd(), '.agents', 'plugins'),
+        path.join(process.cwd(), '.codex', 'plugins'),
+      ],
+    };
   }
 
   capabilities(): string[] {
     return ['skills', 'rules', 'mcp', 'agents', 'hooks'];
-  }
-
-  supportsDirectSymlink(): boolean {
-    return true;
   }
 
   convert(ir: PortableCoreIR, _scope: 'workspace' | 'global'): ConversionResult {
@@ -75,7 +84,6 @@ export class CodexAdapter implements AgentAdapter {
     if (typeof ir.metadata['repository'] === 'string') manifest['repository'] = ir.metadata['repository'];
     if (typeof ir.metadata['license'] === 'string') manifest['license'] = ir.metadata['license'];
     if (keywords.length > 0) manifest['keywords'] = keywords;
-
 
     if (ir.mcpServers.length > 0) {
       manifest.mcpServers = './.mcp.json';
@@ -120,7 +128,6 @@ export class CodexAdapter implements AgentAdapter {
         merge: true,
         description: 'MCP server configuration',
       });
-
     }
 
     if (extensions.hooks.length > 0) {
@@ -181,29 +188,127 @@ export class CodexAdapter implements AgentAdapter {
     };
   }
 
-  async install(pluginPath: string, scope: 'global' | 'local'): Promise<void> {
-    console.log(`[CodexAdapter] Installed plugin at ${pluginPath} (${scope})`);
-  }
-
-  async uninstall(pluginName: string, scope: 'global' | 'local'): Promise<void> {
-    console.log(`[CodexAdapter] Uninstalled plugin ${pluginName} (${scope})`);
-  }
-
-  async resolveVersion(pluginName: string): Promise<string> {
-    try {
-      const pluginPath = await GlobalStore.findPluginPath(pluginName);
-      return path.basename(pluginPath);
-    } catch {
-      return 'latest';
+  protected override async onAfterEnable(context: MaterializationContext): Promise<void> {
+    await this.updateMarketplace(context.pluginName, context.scope, 'add');
+    if (context.scope === 'global') {
+      await this.updateCodexConfig(context.pluginName, 'add');
     }
   }
 
-  getPluginDir(pluginName: string, version = 'latest'): string {
-    return GlobalStore.getAdaptedPluginPath(this.name, 'adapted', pluginName, version);
+  protected override async onAfterDisable(context: DematerializationContext): Promise<void> {
+    await this.updateMarketplace(context.pluginName, context.scope, 'remove');
+    if (context.scope === 'global') {
+      await this.updateCodexConfig(context.pluginName, 'remove');
+    }
   }
+  override async checkHealth(options?: { fix?: boolean }, cwd: string = process.cwd()): Promise<AdapterHealthReport> {
+    const baseReport = await super.checkHealth(options, cwd);
+    const issues = [...baseReport.issues];
+    const fixedIssues = [...baseReport.fixedIssues];
+    let totalChecks = baseReport.totalChecks;
 
-  getLocalPluginDir(pluginName: string): string {
-    return path.join(process.cwd(), '.agents', 'plugins', pluginName);
+    const home = os.homedir();
+    const marketplaceFiles: Array<{ scope: 'global' | 'local'; file: string }> = [
+      { scope: 'local', file: path.join(cwd, '.codex', 'marketplace.json') },
+      { scope: 'local', file: path.join(cwd, '.agents', 'plugins', 'marketplace.json') },
+      { scope: 'global', file: path.join(home, '.codex', 'plugins', 'marketplace.json') },
+      { scope: 'global', file: path.join(home, '.agents', 'plugins', 'marketplace.json') },
+    ];
+
+    for (const { scope, file } of marketplaceFiles) {
+      const exists = await fs.access(file).then(() => true).catch(() => false);
+      if (!exists) continue;
+
+      totalChecks++;
+      try {
+        const raw = await fs.readFile(file, 'utf8');
+        const data = JSON.parse(raw);
+        if (!Array.isArray(data.plugins)) continue;
+
+        let changed = false;
+        const remainingPlugins: unknown[] = [];
+
+        for (const entry of data.plugins) {
+          totalChecks++;
+          if (!entry || typeof entry !== 'object') continue;
+          const p = entry as Record<string, unknown>;
+          const pluginName = typeof p.name === 'string' ? p.name : 'unknown';
+          const source = p.source as Record<string, unknown> | undefined;
+          const relPath = source && typeof source.path === 'string' ? source.path : undefined;
+
+          if (!relPath) continue;
+          const targetDir = path.resolve(path.dirname(file), relPath);
+          const targetExists = await fs.access(targetDir).then(() => true).catch(() => false);
+
+          if (!targetExists) {
+            issues.push({
+              type: 'dangling_marketplace_entry',
+              agent: this.name,
+              scope,
+              path: file,
+              target: targetDir,
+              message: `Marketplace entry "${pluginName}" points to missing target: ${targetDir}`,
+            });
+            if (options?.fix) {
+              changed = true;
+              fixedIssues.push(`[${this.displayName}] Removed dangling entry "${pluginName}" from ${file}`);
+              continue;
+            }
+          } else {
+            const manifestPath = path.join(targetDir, '.codex-plugin', 'plugin.json');
+            const altManifest = path.join(targetDir, 'plugin.json');
+            const manifestFile = (await fs.access(manifestPath).then(() => true).catch(() => false))
+              ? manifestPath
+              : (await fs.access(altManifest).then(() => true).catch(() => false))
+              ? altManifest
+              : null;
+
+            if (manifestFile) {
+              try {
+                const manifestRaw = await fs.readFile(manifestFile, 'utf8');
+                const manifestData = JSON.parse(manifestRaw);
+                const validation = validateCodexManifest(manifestData);
+                if (!validation.valid) {
+                  issues.push({
+                    type: 'schema_error',
+                    agent: this.name,
+                    scope,
+                    path: manifestFile,
+                    message: `Codex manifest schema invalid: ${validation.errors.join('; ')}`,
+                  });
+                }
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                issues.push({
+                  type: 'schema_error',
+                  agent: this.name,
+                  scope,
+                  path: manifestFile,
+                  message: `Failed to parse Codex manifest JSON: ${msg}`,
+                });
+              }
+            }
+          }
+          remainingPlugins.push(entry);
+        }
+
+        if (changed && options?.fix) {
+          data.plugins = remainingPlugins;
+          await fs.writeFile(file, JSON.stringify(data, null, 2) + '\n', 'utf8');
+        }
+      } catch {
+        // ignore parse error on marketplace.json file itself
+      }
+    }
+
+    return {
+      agent: this.name,
+      displayName: this.displayName || this.name,
+      totalChecks,
+      activePlugins: baseReport.activePlugins,
+      issues,
+      fixedIssues,
+    };
   }
 
   private async updateMarketplace(pluginName: string, scope: 'global' | 'local', action: 'add' | 'remove'): Promise<void> {
@@ -289,85 +394,8 @@ export class CodexAdapter implements AgentAdapter {
       console.warn(`[CodexAdapter] Could not update config.toml: ${err.message}`);
     }
   }
-
-  async enable(
-    pluginName: string,
-    scope: 'global' | 'local' = 'local',
-    options?: { copy?: boolean | undefined; version?: string | undefined }
-  ): Promise<void> {
-    let sourcePath: string | undefined;
-    let version = options?.version;
-
-    const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.agents', 'plugins')
-      : path.join(os.homedir(), '.codex', 'plugins');
-
-    if (scope === 'local' && !options?.version) {
-      const localWorkspacePath = this.getLocalPluginDir(pluginName);
-      const localExists = await fs.access(localWorkspacePath).then(() => true).catch(() => false);
-      if (localExists) {
-        sourcePath = localWorkspacePath;
-        version = 'workspace';
-      }
-    }
-
-    if (!sourcePath) {
-      version = version || (await this.resolveVersion(pluginName));
-    }
-
-    const result = await MaterializationEngine.materialize({
-      adapterName: this.name,
-      pluginName,
-      version,
-      sourcePath,
-      scope,
-      targetBaseDir: baseDir,
-      copy: options?.copy,
-    });
-
-    if (result.isCopy) {
-      console.log(`[CodexAdapter] Materialized copied folder: ${result.materializedPath} (isolated edit mode)`);
-    } else {
-      console.log(`[CodexAdapter] Materialized symlink: ${result.materializedPath} -> ${result.sourcePath} (${result.adaptedFilesCount} files adapted)`);
-    }
-
-    // Register in marketplace and config.toml
-    await this.updateMarketplace(pluginName, scope, 'add');
-    if (scope === 'global') {
-      await this.updateCodexConfig(pluginName, 'add');
-    }
-  }
-
-  async disable(pluginName: string, scope: 'global' | 'local' = 'local'): Promise<void> {
-    const targetDirs = scope === 'local'
-      ? [
-          path.join(process.cwd(), '.agents', 'plugins'),
-          path.join(process.cwd(), '.codex', 'plugins'),
-        ]
-      : [
-          path.join(os.homedir(), '.codex', 'plugins'),
-        ];
-
-    const removed = await MaterializationEngine.dematerialize({
-      pluginName,
-      targetBaseDirs: targetDirs,
-    });
-
-    for (const remPath of removed) {
-      console.log(`[CodexAdapter] Removed materialization link: ${remPath}`);
-    }
-
-    // Unregister from marketplace and config.toml
-    await this.updateMarketplace(pluginName, scope, 'remove');
-    if (scope === 'global') {
-      await this.updateCodexConfig(pluginName, 'remove');
-    }
-
-    if (removed.length === 0) {
-      console.log(`[CodexAdapter] No active materialization found for ${pluginName}`);
-    }
-  }
 }
+
 
 
 

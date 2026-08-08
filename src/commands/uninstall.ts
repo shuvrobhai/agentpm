@@ -1,14 +1,11 @@
-import { AntigravityAdapter } from '../adapters/antigravity.js';
-import { ClaudeCodeAdapter } from '../adapters/claudecode.js';
-import { CodexAdapter } from '../adapters/codex.js';
-import { OpenCodeAdapter } from '../adapters/opencode.js';
+import { AdapterRegistry } from '../adapters/index.js';
 import { GlobalStore } from '../core/store.js';
 
 export async function uninstallCommand(plugin: string, options: { global?: boolean }): Promise<void> {
   try {
     console.log(`Uninstalling plugin "${plugin}"...`);
 
-    const adapters = [new AntigravityAdapter(), new ClaudeCodeAdapter(), new CodexAdapter(), new OpenCodeAdapter()];
+    const adapters = AdapterRegistry.all();
 
     // 1. Dematerialize active symlinks across adapters (local & global scopes)
     for (const adapter of adapters) {

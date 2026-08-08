@@ -1,5 +1,5 @@
 import { GlobalStore } from '../core/store.js';
-import { downloadPlugin } from '../core/fetcher.js';
+import { PackageAcquirer } from '../core/acquirer.js';
 import { convertDirToPortableCore } from '../core/portable-writer.js';
 
 export interface UpdateOptions {
@@ -23,9 +23,9 @@ export async function updateCommand(plugins: string[], options: UpdateOptions = 
       try {
         const parsed = GlobalStore.parseRepoIdentifier(identifier);
         console.log(`Updating ${parsed.namespace}/${parsed.pluginName}...`);
-        const result = await downloadPlugin(parsed, true);
-        await convertDirToPortableCore(result.targetPath, result.targetPath);
-        console.log(`  Updated ${parsed.namespace}/${parsed.pluginName}@${result.version} -> ${result.targetPath}`);
+        const result = await PackageAcquirer.fetchPlugin(parsed, true);
+        await convertDirToPortableCore(result.sourcePath, result.sourcePath);
+        console.log(`  Updated ${parsed.namespace}/${parsed.pluginName}@${result.version} -> ${result.sourcePath}`);
       } catch (err: any) {
         console.error(`  Failed to update ${identifier}: ${err.message}`);
       }

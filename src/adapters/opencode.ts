@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import type { AgentAdapter, AgentAdapterPaths } from './base.js';
+import { BaseAgentAdapter } from './base.js';
 import type { PortableCoreIR, ConversionResult, FileOutput } from '../ir/types.js';
 import { MaterializationEngine } from '../core/materialization.js';
 import { GlobalStore } from '../core/store.js';
@@ -125,65 +125,48 @@ function formatAgentFrontmatter(agent: {
     .join('\n')}\n---`;
 }
 
-export class OpenCodeAdapter implements AgentAdapter {
+export class OpenCodeAdapter extends BaseAgentAdapter {
   name = 'opencode';
   displayName = 'OpenCode';
+  protected override logTag = 'OpenCodeAdapter';
 
-  paths: AgentAdapterPaths = {
-    skillsWorkspace: '.opencode/skills',
-    skillsGlobal: '~/.config/opencode/skills',
-    rulesWorkspace: '.opencode/rules',
-    rulesGlobal: '~/.config/opencode/rules',
-    hooksWorkspace: '.opencode/plugins',
-    hooksGlobal: '~/.config/opencode/plugins',
-    mcpConfig: 'opencode.json',
-    contextFile: 'AGENTS.md',
-  };
+  override get detectProbes(): { global: string[]; local: string[] } {
+    return {
+      global: [path.join(os.homedir(), '.config', 'opencode')],
+      local: [path.join(process.cwd(), '.opencode')],
+    };
+  }
 
-  async detect(scope: 'global' | 'local' = 'local'): Promise<boolean> {
-    if (scope === 'local') {
-      const localDir = path.join(process.cwd(), '.opencode');
-      const localSkills = path.join(process.cwd(), '.opencode', 'skills');
-      const hasDir = await fs.access(localDir).then(() => true).catch(() => false);
-      const hasSkills = await fs.access(localSkills).then(() => true).catch(() => false);
-      return hasDir || hasSkills;
-    } else {
-      const globalDir = path.join(os.homedir(), '.config', 'opencode');
-      return await fs.access(globalDir).then(() => true).catch(() => false);
-    }
+  get globalPluginDir(): string {
+    return path.join(os.homedir(), '.config', 'opencode', 'plugins');
+  }
+
+  get localPluginDir(): string {
+    return path.join(process.cwd(), '.opencode');
+  }
+
+  override getLocalPluginDir(pluginName: string): string {
+    return path.join(process.cwd(), '.opencode', 'skills', pluginName);
+  }
+
+  override get candidateSearchDirs(): { global: string[]; local: string[] } {
+    return {
+      global: [
+        path.join(os.homedir(), '.config', 'opencode', 'plugins'),
+        path.join(os.homedir(), '.config', 'opencode', 'skills'),
+        path.join(os.homedir(), '.config', 'opencode', 'commands'),
+      ],
+      local: [
+        path.join(process.cwd(), '.agents', 'plugins'),
+        path.join(process.cwd(), '.opencode', 'plugins'),
+        path.join(process.cwd(), '.opencode', 'skills'),
+        path.join(process.cwd(), '.opencode', 'commands'),
+      ],
+    };
   }
 
   capabilities(): string[] {
     return ['skills', 'mcp', 'rules', 'agents', 'commands'];
-  }
-
-  supportsDirectSymlink(): boolean {
-    return true;
-  }
-
-  async install(pluginPath: string, scope: 'global' | 'local'): Promise<void> {
-    console.log(`[OpenCodeAdapter] Installed plugin at ${pluginPath} (${scope})`);
-  }
-
-  async uninstall(pluginName: string, scope: 'global' | 'local'): Promise<void> {
-    console.log(`[OpenCodeAdapter] Uninstalled plugin ${pluginName} (${scope})`);
-  }
-
-  async resolveVersion(pluginName: string): Promise<string> {
-    try {
-      const pluginPath = await GlobalStore.findPluginPath(pluginName);
-      return path.basename(pluginPath);
-    } catch {
-      return 'latest';
-    }
-  }
-
-  getPluginDir(pluginName: string, version = 'latest'): string {
-    return GlobalStore.getAdaptedPluginPath(this.name, 'adapted', pluginName, version);
-  }
-
-  getLocalPluginDir(pluginName: string): string {
-    return path.join(process.cwd(), '.opencode', 'skills', pluginName);
   }
 
   convert(ir: PortableCoreIR, _scope: 'workspace' | 'global'): ConversionResult {
@@ -354,74 +337,5 @@ export class OpenCodeAdapter implements AgentAdapter {
       manualSteps,
     };
   }
-
-  async enable(
-    pluginName: string,
-    scope: 'global' | 'local' = 'local',
-    options?: { copy?: boolean | undefined; version?: string | undefined }
-  ): Promise<void> {
-    let sourcePath: string | undefined;
-    let version = options?.version;
-
-    const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.agents', 'plugins')
-      : path.join(os.homedir(), '.config', 'opencode', 'plugins');
-
-    if (scope === 'local' && !options?.version) {
-      const localWorkspacePath = this.getLocalPluginDir(pluginName);
-      const localExists = await fs.access(localWorkspacePath).then(() => true).catch(() => false);
-      if (localExists) {
-        sourcePath = localWorkspacePath;
-        version = 'workspace';
-      }
-    }
-
-    if (!sourcePath) {
-      version = version || (await this.resolveVersion(pluginName));
-    }
-
-    const result = await MaterializationEngine.materialize({
-      adapterName: this.name,
-      pluginName,
-      version,
-      sourcePath,
-      scope,
-      targetBaseDir: baseDir,
-      copy: options?.copy,
-    });
-
-    if (result.isCopy) {
-      console.log(`[OpenCodeAdapter] Materialized copied folder: ${result.materializedPath} (isolated edit mode)`);
-    } else {
-      console.log(`[OpenCodeAdapter] Materialized symlink: ${result.materializedPath} -> ${result.sourcePath} (${result.adaptedFilesCount} files adapted)`);
-    }
-  }
-
-  async disable(pluginName: string, scope: 'global' | 'local' = 'local'): Promise<void> {
-    const targetDirs = scope === 'local'
-      ? [
-          path.join(process.cwd(), '.agents', 'plugins'),
-          path.join(process.cwd(), '.opencode', 'plugins'),
-          path.join(process.cwd(), '.opencode', 'skills'),
-          path.join(process.cwd(), '.opencode', 'commands'),
-        ]
-      : [
-          path.join(os.homedir(), '.config', 'opencode', 'plugins'),
-          path.join(os.homedir(), '.config', 'opencode', 'skills'),
-          path.join(os.homedir(), '.config', 'opencode', 'commands'),
-        ];
-
-    const removed = await MaterializationEngine.dematerialize({
-      pluginName,
-      targetBaseDirs: targetDirs,
-    });
-
-    for (const remPath of removed) {
-      console.log(`[OpenCodeAdapter] Removed materialization link: ${remPath}`);
-    }
-
-    if (removed.length === 0) {
-      console.log(`[OpenCodeAdapter] No active materialization found for ${pluginName}`);
-    }
-  }
 }
+

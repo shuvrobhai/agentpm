@@ -1,6 +1,5 @@
 import { installCommand } from './install.js';
 import { enableCommand } from './enable.js';
-import { GlobalStore } from '../core/store.js';
 
 export interface AddOptions {
   target?: string;
@@ -14,12 +13,15 @@ export async function addCommand(repo: string, options: AddOptions = {}): Promis
   const installOpts: { target?: string; force?: boolean } = {};
   if (options.target !== undefined) installOpts.target = options.target;
   if (options.force !== undefined) installOpts.force = options.force;
-  await installCommand(repo, installOpts);
+  const pkg = await installCommand(repo, installOpts);
   if (options.skipEnable) return;
 
   try {
-    const parsed = GlobalStore.parseRepoIdentifier(repo);
-    const pluginName = parsed.pluginName;
+    if (!pkg) {
+      console.log('Skipping auto-enable: install did not yield a plugin package.');
+      return;
+    }
+    const pluginName = pkg.pluginName;
     if (!pluginName) {
       console.log('Skipping auto-enable: could not infer plugin name.');
       return;

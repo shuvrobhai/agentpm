@@ -12,6 +12,11 @@ import {
   APM_LOCKFILE,
 } from '../src/core/acquirer.js';
 import { agentpmCacheRoot } from '../src/core/config.js';
+import { GlobalStore } from '../src/core/store.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 describe('Acquirer + APM-shaped lockfile (ADR 0013)', () => {
   test('contentHashOfDir hashes files deterministically and ignores .git', async () => {
@@ -97,5 +102,67 @@ describe('Acquirer + APM-shaped lockfile (ADR 0013)', () => {
       else process.env.AGENTPM_CACHE = prev;
       await fs.rm(tempCache, { recursive: true, force: true });
     }
+  });
+
+  test('PackageAcquirer.acquire acquires local directories directly', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-acq-local-'));
+    try {
+      const { PackageAcquirer } = await import('../src/core/acquirer.js');
+      const acquired = await PackageAcquirer.acquire(tmpDir);
+      assert.equal(acquired.sourceType, 'local');
+      assert.equal(acquired.version, 'workspace');
+      assert.equal(acquired.sourcePath, tmpDir);
+      assert.equal(acquired.alreadyExisted, true);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('PackageAcquirer.acquire rejects git ref flag injection', async () => {
+    const { PackageAcquirer } = await import('../src/core/acquirer.js');
+    await assert.rejects(
+      async () => {
+        await PackageAcquirer.acquire('owner/repo#-upload-pack');
+      },
+      (err: Error) => err.message.includes('Invalid git reference') || err.message.includes('Security Violation'),
+    );
+  });
+
+  test('PackageAcquirer temp mode clones into a disposable dir and cleanup removes it', async () => {
+    const { PackageAcquirer } = await import('../src/core/acquirer.js');
+
+    const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-tmprepo-'));
+    const repoDir = path.join(fixture, 'fixture-repo');
+    await fs.mkdir(repoDir, { recursive: true });
+    await fs.writeFile(path.join(repoDir, 'plugin.json'), '{"name":"fixture","version":"1.0.0"}', 'utf8');
+    await fs.mkdir(path.join(repoDir, 'skills', 'demo'), { recursive: true });
+    await fs.writeFile(path.join(repoDir, 'skills', 'demo', 'SKILL.md'), 'demo', 'utf8');
+
+    try {
+      await execFileAsync('git', ['init', repoDir], { cwd: repoDir });
+      await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoDir });
+      await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: repoDir });
+      await execFileAsync('git', ['add', '.'], { cwd: repoDir });
+      await execFileAsync('git', ['commit', '-m', 'init'], { cwd: repoDir });
+
+      const url = `file://${repoDir}`;
+      const acquired = await PackageAcquirer.acquire(url, { temp: true });
+      assert.equal(acquired.sourceType, 'git');
+      assert.ok(acquired.sourcePath.startsWith(os.tmpdir()), 'temp acquire should live under tmp');
+      assert.ok(typeof acquired.cleanup === 'function');
+      assert.ok(await fs.access(acquired.sourcePath).then(() => true).catch(() => false));
+
+      const tempRoot = acquired.sourcePath.split(path.sep).slice(0, -1).join(path.sep);
+      await acquired.cleanup!();
+      assert.equal(await fs.access(tempRoot).then(() => true).catch(() => false), false, 'cleanup should remove the temp clone');
+    } finally {
+      await fs.rm(fixture, { recursive: true, force: true });
+    }
+  });
+
+  test('parseRepoIdentifier accepts file:// git transports without appending .git', () => {
+    const parsed = GlobalStore.parseRepoIdentifier('file:///tmp/some/repo');
+    assert.equal(parsed.cloneUrl, 'file:///tmp/some/repo');
+    assert.equal(parsed.pluginName, 'repo');
   });
 });

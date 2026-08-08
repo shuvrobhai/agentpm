@@ -3,7 +3,6 @@ import path from 'node:path';
 import { GlobalStore } from './store.js';
 import { parsePlugin } from '../parser/index.js';
 import { toPortableCore } from '../ir/to-portable-core.js';
-import { getAdapter } from '../adapters/index.js';
 
 export interface MaterializationOptions {
   adapterName: string;
@@ -95,6 +94,7 @@ export class MaterializationEngine {
     adaptedDir: string,
     adapterName: string,
   ): Promise<number> {
+    const { getAdapter } = await import('../adapters/index.js');
     const adapter = getAdapter(adapterName);
 
     const ir = await parsePlugin(sourceDir);

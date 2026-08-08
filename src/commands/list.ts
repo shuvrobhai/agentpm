@@ -1,15 +1,7 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import os from 'node:os';
 import { GlobalStore } from '../core/store.js';
+import { AdapterRegistry, type ActivePluginInfo } from '../adapters/index.js';
 
-export interface ActiveSymlinkInfo {
-  agent: string;
-  scope: 'local' | 'global';
-  pluginName: string;
-  symlinkPath: string;
-  targetPath?: string | undefined;
-}
+export type ActiveSymlinkInfo = ActivePluginInfo;
 
 export async function listCommand(options: { global?: boolean; json?: boolean }): Promise<void> {
   try {
@@ -33,39 +25,8 @@ export async function listCommand(options: { global?: boolean; json?: boolean })
       return;
     }
 
-    // Default: Inspect local workspace materializations
-    const symlinks: ActiveSymlinkInfo[] = [];
-    const targets = [
-      { agent: 'antigravity', scope: 'local' as const, dir: path.join(process.cwd(), '.agents', 'plugins') },
-      { agent: 'antigravity', scope: 'local' as const, dir: path.join(process.cwd(), '.agents', 'skills') },
-      { agent: 'claude-code', scope: 'local' as const, dir: path.join(process.cwd(), '.claudecode', 'skills') },
-      { agent: 'codex', scope: 'local' as const, dir: path.join(process.cwd(), '.codex', 'skills') },
-    ];
-
-    for (const target of targets) {
-      const exists = await fs.access(target.dir).then(() => true).catch(() => false);
-      if (!exists) continue;
-
-      const entries = await fs.readdir(target.dir).catch(() => []);
-      for (const entry of entries) {
-        if (entry.startsWith('.')) continue;
-        const symlinkPath = path.join(target.dir, entry);
-        const lstat = await fs.lstat(symlinkPath).catch(() => null);
-
-        let targetPath: string | undefined;
-        if (lstat?.isSymbolicLink()) {
-          targetPath = await fs.readlink(symlinkPath).catch(() => undefined);
-        }
-
-        symlinks.push({
-          agent: target.agent,
-          scope: target.scope,
-          pluginName: entry,
-          symlinkPath,
-          targetPath,
-        });
-      }
-    }
+    // Default: Inspect local workspace materializations using AdapterRegistry
+    const symlinks = await AdapterRegistry.scanWorkspace();
 
     if (options.json) {
       console.log(JSON.stringify(symlinks, null, 2));

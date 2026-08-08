@@ -332,7 +332,7 @@ export class GlobalStore {
     let cloneUrl = '';
     let subfolder: string | undefined;
 
-    if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('git@')) {
+    if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('git@') || raw.startsWith('file://')) {
       const cleaned = raw.replace(/\.git$/, '');
       if (cleaned.includes('/tree/')) {
         const [repoBase, treePath] = cleaned.split('/tree/');
@@ -359,7 +359,11 @@ export class GlobalStore {
         const urlParts = cleaned.split('/');
         pluginName = urlParts.pop() || '';
         namespace = urlParts.pop() || '';
-        cloneUrl = raw.endsWith('.git') ? raw : `${raw}.git`;
+        if (raw.startsWith('file://')) {
+          cloneUrl = raw;
+        } else {
+          cloneUrl = raw.endsWith('.git') ? raw : `${raw}.git`;
+        }
       }
     } else {
       const parts = raw.split('/');

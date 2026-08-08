@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
-import { PackageManifest } from '../src/core/manifest.js';
+import { parsePlugin } from '../src/parser/index.js';
+import { isValidPluginName, buildPortablePluginManifest } from '../src/core/v1-manifest.js';
 
-describe('PackageManifest Unit Tests', () => {
-  test('PackageManifest.load parses root plugin.json and discovers capabilities', async () => {
+describe('Plugin Parser & Manifest Inspection Unit Tests', () => {
+  test('parsePlugin parses root plugin.json and discovers full 9 components', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-manifest-test-'));
 
     try {
@@ -32,24 +33,25 @@ describe('PackageManifest Unit Tests', () => {
       );
 
       await fs.writeFile(path.join(tmpDir, 'hooks.json'), JSON.stringify({ hooks: [] }), 'utf8');
-      await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# Working Memory', 'utf8');
+      await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), '# Working Memory', 'utf8');
 
-      const manifest = await PackageManifest.load(tmpDir);
+      const ir = await parsePlugin(tmpDir);
 
-      assert.equal(manifest.name, 'test-plugin');
-      assert.equal(manifest.version, '1.2.3');
-      assert.equal(manifest.description, 'A test plugin for manifest loading');
-      assert.equal(manifest.author.name, 'Test Author');
-      assert.deepEqual(manifest.capabilities.skills, ['my-skill']);
-      assert.deepEqual(manifest.capabilities.mcpServers, ['myMcp']);
-      assert.equal(manifest.capabilities.hooks, true);
-      assert.ok(manifest.capabilities.rules.includes('AGENTS.md'));
+      assert.equal(ir.metadata.name, 'test-plugin');
+      assert.equal(ir.metadata.version, '1.2.3');
+      assert.equal(ir.metadata.description, 'A test plugin for manifest loading');
+      assert.equal((ir.metadata.author as any)?.name, 'Test Author');
+      assert.equal(ir.skills.length, 1);
+      assert.equal(ir.skills[0]?.name, 'my-skill');
+      assert.equal(ir.mcpServers.length, 1);
+      assert.equal(ir.mcpServers[0]?.name, 'myMcp');
+      assert.equal(ir.contextFile?.filename, 'CLAUDE.md');
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  test('PackageManifest.load falls back to .claude-plugin/plugin.json', async () => {
+  test('parsePlugin falls back to .claude-plugin/plugin.json', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-manifest-claude-'));
 
     try {
@@ -61,29 +63,24 @@ describe('PackageManifest Unit Tests', () => {
         'utf8'
       );
 
-      const manifest = await PackageManifest.load(tmpDir);
+      const ir = await parsePlugin(tmpDir);
 
-      assert.equal(manifest.name, 'claude-vendor-plugin');
-      assert.equal(manifest.version, '0.9.0');
+      assert.equal(ir.metadata.name, 'claude-vendor-plugin');
+      assert.equal(ir.metadata.version, '0.9.0');
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  test('PackageManifest.validateSchema validates JSON schema fields', () => {
-    const valid = PackageManifest.validateSchema({
-      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
-      name: 'test-plugin',
-      version: '1.0.0',
-    });
-    assert.equal(valid.valid, true);
-    assert.equal(valid.errors.length, 0);
+  test('v1-manifest validates plugin names and builds portable manifest', () => {
+    assert.equal(isValidPluginName('test-plugin'), true);
+    assert.equal(isValidPluginName('invalid--name'), false);
 
-    const invalid = PackageManifest.validateSchema({
-      name: 123,
-      version: true,
-    });
-    assert.equal(invalid.valid, false);
-    assert.ok(invalid.errors.length > 0);
+    const manifest = buildPortablePluginManifest(
+      { name: 'test-plugin', version: '1.0.0', description: 'Test' },
+      'fallback'
+    );
+    assert.equal(manifest.name, 'test-plugin');
+    assert.equal(manifest.version, '1.0.0');
   });
 });

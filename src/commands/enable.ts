@@ -1,8 +1,4 @@
-import type { AgentAdapter } from '../adapters/index.js';
-import { getAdapter } from '../adapters/index.js';
-import { AntigravityAdapter } from '../adapters/antigravity.js';
-import { ClaudeCodeAdapter } from '../adapters/claudecode.js';
-import { CodexAdapter } from '../adapters/codex.js';
+import { AdapterRegistry, getAdapter } from '../adapters/index.js';
 
 export async function enableCommand(
   plugin: string,
@@ -20,7 +16,7 @@ export async function enableCommand(
       return;
     }
 
-    const adapters: AgentAdapter[] = [new AntigravityAdapter(), new ClaudeCodeAdapter(), new CodexAdapter()];
+    const adapters = AdapterRegistry.all();
     let materializedCount = 0;
 
     for (const adapter of adapters) {
@@ -31,10 +27,9 @@ export async function enableCommand(
     }
 
     if (materializedCount === 0) {
-      const defaultAdapter = new AntigravityAdapter();
+      const defaultAdapter = AdapterRegistry.get('antigravity');
       await defaultAdapter.enable(plugin, scope, enableOpts);
     }
-
   } catch (err: any) {
     console.error('Error enabling plugin:', err);
     process.exit(1);

@@ -1,26 +1,39 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import type { AgentAdapter } from './base.js';
+import { BaseAgentAdapter } from './base.js';
 import type { PortableCoreIR, ConversionResult, FileOutput } from '../ir/types.js';
 import { formatAgentSkill, skillSupportingFilesWarning } from '../ir/skill-format.js';
 import { serializeNativeHooks } from '../ir/native-hooks.js';
-import { buildNativeManifestMetadata, sanitizePluginName } from '../core/v1-manifest.js';
-import { MaterializationEngine } from '../core/materialization.js';
-import { GlobalStore } from '../core/store.js';
+import { buildNativeManifestMetadata } from '../core/v1-manifest.js';
 
-export class ClaudeCodeAdapter implements AgentAdapter {
+export class ClaudeCodeAdapter extends BaseAgentAdapter {
   name = 'claude-code';
   displayName = 'Claude Code';
+  protected override logTag = 'ClaudeCodeAdapter';
 
-  async detect(scope: 'global' | 'local' = 'local'): Promise<boolean> {
-    if (scope === 'local') {
-      const localClaude = path.join(process.cwd(), '.claudecode');
-      return await fs.access(localClaude).then(() => true).catch(() => false);
-    } else {
-      const globalClaude = path.join(os.homedir(), '.claude');
-      return await fs.access(globalClaude).then(() => true).catch(() => false);
-    }
+  override get detectProbes(): { global: string[]; local: string[] } {
+    return {
+      global: [path.join(os.homedir(), '.claude')],
+      local: [path.join(process.cwd(), '.claudecode')],
+    };
+  }
+
+  get globalPluginDir(): string {
+    return path.join(os.homedir(), '.claude', 'plugins');
+  }
+
+  get localPluginDir(): string {
+    return path.join(process.cwd(), '.claudecode');
+  }
+
+  override get candidateSearchDirs(): { global: string[]; local: string[] } {
+    return {
+      global: [path.join(os.homedir(), '.claude', 'plugins')],
+      local: [
+        path.join(process.cwd(), '.agents', 'plugins'),
+        path.join(process.cwd(), '.claude', 'plugins'),
+      ],
+    };
   }
 
   capabilities(): string[] {
@@ -174,97 +187,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       manualSteps,
     };
   }
-
-  async install(pluginPath: string, scope: 'global' | 'local'): Promise<void> {
-    console.log(`[ClaudeCodeAdapter] Installed plugin at ${pluginPath} (${scope})`);
-  }
-
-  async uninstall(pluginName: string, scope: 'global' | 'local'): Promise<void> {
-    console.log(`[ClaudeCodeAdapter] Uninstalled plugin ${pluginName} (${scope})`);
-  }
-
-  async resolveVersion(pluginName: string): Promise<string> {
-    try {
-      const pluginPath = await GlobalStore.findPluginPath(pluginName);
-      return path.basename(pluginPath);
-    } catch {
-      return 'latest';
-    }
-  }
-
-  getPluginDir(pluginName: string, version = 'latest'): string {
-    return GlobalStore.getAdaptedPluginPath(this.name, 'adapted', pluginName, version);
-  }
-
-  getLocalPluginDir(pluginName: string): string {
-    return path.join(process.cwd(), '.agents', 'plugins', pluginName);
-  }
-
-  async enable(
-    pluginName: string,
-    scope: 'global' | 'local' = 'local',
-    options?: { copy?: boolean | undefined; version?: string | undefined }
-  ): Promise<void> {
-    let sourcePath: string | undefined;
-    let version = options?.version;
-
-    const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.agents', 'plugins')
-      : path.join(os.homedir(), '.claude', 'plugins');
-
-    if (scope === 'local' && !options?.version) {
-      const localWorkspacePath = this.getLocalPluginDir(pluginName);
-      const localExists = await fs.access(localWorkspacePath).then(() => true).catch(() => false);
-      if (localExists) {
-        sourcePath = localWorkspacePath;
-        version = 'workspace';
-      }
-    }
-
-    if (!sourcePath) {
-      version = version || (await this.resolveVersion(pluginName));
-    }
-
-    const result = await MaterializationEngine.materialize({
-      adapterName: this.name,
-      pluginName,
-      version,
-      sourcePath,
-      scope,
-      targetBaseDir: baseDir,
-      copy: options?.copy,
-    });
-
-    if (result.isCopy) {
-      console.log(`[ClaudeCodeAdapter] Materialized copied folder: ${result.materializedPath} (isolated edit mode)`);
-    } else {
-      console.log(`[ClaudeCodeAdapter] Materialized symlink: ${result.materializedPath} -> ${result.sourcePath}`);
-    }
-  }
-
-  async disable(pluginName: string, scope: 'global' | 'local' = 'local'): Promise<void> {
-    const targetDirs = scope === 'local'
-      ? [
-          path.join(process.cwd(), '.agents', 'plugins'),
-          path.join(process.cwd(), '.claude', 'plugins'),
-        ]
-      : [
-          path.join(os.homedir(), '.claude', 'plugins'),
-        ];
-
-    const removed = await MaterializationEngine.dematerialize({
-      pluginName,
-      targetBaseDirs: targetDirs,
-    });
-
-    for (const remPath of removed) {
-      console.log(`[ClaudeCodeAdapter] Removed symlink: ${remPath}`);
-    }
-
-    if (removed.length === 0) {
-      console.log(`[ClaudeCodeAdapter] No active symlink found for ${pluginName}`);
-    }
-  }
 }
+
 
 

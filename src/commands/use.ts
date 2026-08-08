@@ -1,8 +1,6 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
-import { GlobalStore } from '../core/store.js';
-import { cloneRepo } from '../core/acquirer.js';
+import fs from 'node:fs/promises';
+import { PackageAcquirer } from '../core/acquirer.js';
 
 export interface UseOptions {
   skill?: string;
@@ -16,23 +14,9 @@ function parsePackageRef(identifier: string): { raw: string; ref?: string } {
   return { raw: identifier };
 }
 
-async function resolvePluginDir(identifier: string): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const localPath = path.resolve(identifier);
-  const localExists = await fs.access(localPath).then(() => true).catch(() => false);
-  if (localExists) {
-    return { dir: localPath, cleanup: async () => {} };
-  }
-
-  const parsed = GlobalStore.parseRepoIdentifier(identifier);
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plugins-use-'));
-  const cloneDir = path.join(tempDir, 'repo');
-  try {
-    const acquired = await cloneRepo(parsed, cloneDir);
-    return { dir: acquired.pluginDir, cleanup: async () => { await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {}); } };
-  } catch (err) {
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-    throw err;
-  }
+async function resolvePluginDir(identifier: string, ref?: string): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const acquired = await PackageAcquirer.acquire(identifier, { temp: true, ref });
+  return { dir: acquired.sourcePath, cleanup: acquired.cleanup ?? (async () => {}) };
 }
 
 async function readJson(dir: string, file: string): Promise<any | null> {
@@ -48,7 +32,7 @@ async function readJson(dir: string, file: string): Promise<any | null> {
 
 export async function useCommand(identifier: string, options: UseOptions = {}): Promise<void> {
   const { raw, ref } = parsePackageRef(identifier);
-  const resolved = await resolvePluginDir(raw);
+  const resolved = await resolvePluginDir(raw, ref);
 
   try {
     const pluginJson = (await readJson(resolved.dir, 'plugin.json')) ||

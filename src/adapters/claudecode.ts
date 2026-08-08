@@ -42,9 +42,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     await GlobalStore.ensureDir(baseDir);
 
-    const pluginDirName = path.basename(sourcePath) === 'latest'
+    const lastSegment = path.basename(sourcePath);
+    const isVersionSegment = ['latest', 'main', 'master', 'head'].includes(lastSegment.toLowerCase()) || /^v?\d+/.test(lastSegment);
+
+    const pluginDirName = isVersionSegment
       ? path.basename(path.dirname(sourcePath))
-      : path.basename(sourcePath);
+      : lastSegment;
 
     const linkPath = path.join(baseDir, pluginDirName);
 

@@ -59,6 +59,17 @@ export class PluginConverter {
       result
     );
 
+    // Post-process: Synthesize root plugin.json if present in .claude-plugin/
+    const rootPluginJson = path.join(targetDir, 'plugin.json');
+    const claudePluginJson = path.join(targetDir, '.claude-plugin', 'plugin.json');
+    const rootExists = await fs.access(rootPluginJson).then(() => true).catch(() => false);
+    const claudeExists = await fs.access(claudePluginJson).then(() => true).catch(() => false);
+
+    if (!rootExists && claudeExists) {
+      await fs.copyFile(claudePluginJson, rootPluginJson);
+      result.filesModified++;
+    }
+
     return result;
   }
 

@@ -43,10 +43,11 @@ describe('GlobalStore Unit Tests', () => {
     );
   });
 
-  test('parseRepoIdentifier handles GitHub /tree/ branch URLs', () => {
+  test('parseRepoIdentifier handles GitHub /tree/ branch URLs and subfolders', () => {
     const parsed = GlobalStore.parseRepoIdentifier('https://github.com/anthropics/knowledge-work-plugins/tree/main/productivity');
     assert.equal(parsed.namespace, 'anthropics');
-    assert.equal(parsed.pluginName, 'knowledge-work-plugins');
+    assert.equal(parsed.pluginName, 'productivity');
+    assert.equal(parsed.subfolder, 'productivity');
     assert.equal(parsed.cloneUrl, 'https://github.com/anthropics/knowledge-work-plugins.git');
     assert.equal(parsed.ref, 'main');
   });

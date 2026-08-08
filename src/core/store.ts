@@ -7,6 +7,7 @@ export interface ParsedRepo {
   pluginName: string;
   ref?: string;
   cloneUrl: string;
+  subfolder?: string;
 }
 
 export interface StoredPlugin {
@@ -62,21 +63,36 @@ export class GlobalStore {
   }
 
   static async findPluginPath(pluginIdentifier: string, version = 'latest'): Promise<string> {
+    const resolveVersionFromPluginDir = async (pluginDir: string, requestedVer: string): Promise<string | null> => {
+      const exactPath = path.join(pluginDir, requestedVer);
+      const exactExists = await fs.access(exactPath).then(() => true).catch(() => false);
+      if (exactExists) return exactPath;
+
+      if (requestedVer === 'latest') {
+        const availableVersions = await fs.readdir(pluginDir).catch(() => []);
+        const validVersions = availableVersions.filter(v => !v.startsWith('.'));
+        if (validVersions.length > 0) {
+          return path.join(pluginDir, validVersions[0]);
+        }
+      }
+      return null;
+    };
+
     if (pluginIdentifier.includes('/')) {
       const [namespace, pluginName] = pluginIdentifier.split('/');
-      const pluginPath = this.getPluginPath(namespace, pluginName, version);
-      const exists = await fs.access(pluginPath).then(() => true).catch(() => false);
-      if (exists) return pluginPath;
-      throw new Error(`Plugin "${pluginIdentifier}@${version}" not found in global store at ${pluginPath}`);
+      const pluginDir = path.join(this.getStorePath(), namespace, pluginName);
+      const resolved = await resolveVersionFromPluginDir(pluginDir, version);
+      if (resolved) return resolved;
+      throw new Error(`Plugin "${pluginIdentifier}@${version}" not found in global store at ${pluginDir}`);
     }
 
     const storePath = this.getStorePath();
     const namespaces = await fs.readdir(storePath).catch(() => []);
 
     for (const ns of namespaces) {
-      const candidatePath = path.join(storePath, ns, pluginIdentifier, version);
-      const exists = await fs.access(candidatePath).then(() => true).catch(() => false);
-      if (exists) return candidatePath;
+      const pluginDir = path.join(storePath, ns, pluginIdentifier);
+      const resolved = await resolveVersionFromPluginDir(pluginDir, version);
+      if (resolved) return resolved;
     }
 
     throw new Error(`Plugin "${pluginIdentifier}@${version}" not found in any namespace in global store (${storePath})`);
@@ -169,26 +185,35 @@ export class GlobalStore {
       ref = parts[1];
     }
 
-    // Strip trailing slashes to prevent empty component errors
     raw = raw.replace(/\/+$/, '');
 
     let namespace: string;
     let pluginName: string;
     let cloneUrl: string;
+    let subfolder: string | undefined;
 
-    // Handle full URLs vs owner/repo format
     if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('git@')) {
       const cleaned = raw.replace(/\.git$/, '');
       if (cleaned.includes('/tree/')) {
         const [repoBase, treePath] = cleaned.split('/tree/');
         const urlParts = repoBase.split('/');
-        pluginName = urlParts.pop() || '';
+        const rootRepoName = urlParts.pop() || '';
         namespace = urlParts.pop() || '';
         cloneUrl = `${repoBase}.git`;
 
-        if (!ref && treePath) {
-          const treeParts = treePath.split('/');
-          ref = treeParts[0];
+        if (treePath) {
+          const treeParts = treePath.split('/').filter(Boolean);
+          if (!ref) {
+            ref = treeParts[0];
+          }
+          if (treeParts.length > 1) {
+            subfolder = treeParts.slice(1).join('/');
+            pluginName = treeParts[treeParts.length - 1];
+          } else {
+            pluginName = rootRepoName;
+          }
+        } else {
+          pluginName = rootRepoName;
         }
       } else {
         const urlParts = cleaned.split('/');
@@ -220,6 +245,7 @@ export class GlobalStore {
       pluginName,
       ref,
       cloneUrl,
+      subfolder,
     };
   }
 }

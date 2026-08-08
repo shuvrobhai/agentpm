@@ -1,6 +1,7 @@
 import { simpleGit } from 'simple-git';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { GlobalStore, ParsedRepo } from './store.js';
 
 export interface DownloadResult {
@@ -47,16 +48,37 @@ export async function downloadPlugin(parsed: ParsedRepo, force = false): Promise
     options.push('--branch', parsed.ref);
   }
 
-  await git.clone(parsed.cloneUrl, targetPath, isCommitSha ? [] : options);
+  if (parsed.subfolder) {
+    // Monorepo subfolder download strategy: clone to temp directory, extract subfolder
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-clone-'));
+    try {
+      await git.clone(parsed.cloneUrl, tempDir, isCommitSha ? [] : options);
+      if (isCommitSha && parsed.ref) {
+        const repoGit = simpleGit(tempDir);
+        await repoGit.checkout(parsed.ref);
+      }
 
-  if (isCommitSha && parsed.ref) {
-    const repoGit = simpleGit(targetPath);
-    await repoGit.checkout(parsed.ref);
+      const extractedPath = path.join(tempDir, parsed.subfolder);
+      const subfolderExists = await fs.access(extractedPath).then(() => true).catch(() => false);
+
+      if (!subfolderExists) {
+        throw new Error(`Subfolder "${parsed.subfolder}" not found in repository ${parsed.cloneUrl} at ref ${version}`);
+      }
+
+      await GlobalStore.copyDirectoryDereferenced(extractedPath, targetPath);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  } else {
+    await git.clone(parsed.cloneUrl, targetPath, isCommitSha ? [] : options);
+    if (isCommitSha && parsed.ref) {
+      const repoGit = simpleGit(targetPath);
+      await repoGit.checkout(parsed.ref);
+    }
+
+    const internalGitDir = path.join(targetPath, '.git');
+    await fs.rm(internalGitDir, { recursive: true, force: true }).catch(() => {});
   }
-
-  // Remove .git folder inside the downloaded store to save space and avoid nested repo confusion
-  const internalGitDir = path.join(targetPath, '.git');
-  await fs.rm(internalGitDir, { recursive: true, force: true }).catch(() => {});
 
   return {
     targetPath,

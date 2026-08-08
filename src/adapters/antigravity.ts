@@ -42,16 +42,18 @@ export class AntigravityAdapter implements AgentAdapter {
   ): Promise<void> {
     const rawSourcePath = await GlobalStore.findPluginPath(pluginName, version);
 
-    // Primary workspace materialization directory: .agents/plugins/
     const baseDir = scope === 'local'
       ? path.join(process.cwd(), '.agents', 'plugins')
       : path.join(os.homedir(), '.gemini', 'config', 'plugins');
 
     await GlobalStore.ensureDir(baseDir);
 
-    const pluginDirName = path.basename(rawSourcePath) === 'latest'
+    const lastSegment = path.basename(rawSourcePath);
+    const isVersionSegment = ['latest', 'main', 'master', 'head'].includes(lastSegment.toLowerCase()) || /^v?\d+/.test(lastSegment);
+
+    const pluginDirName = isVersionSegment
       ? path.basename(path.dirname(rawSourcePath))
-      : path.basename(rawSourcePath);
+      : lastSegment;
 
     const namespace = path.basename(path.dirname(path.dirname(rawSourcePath)));
     const adaptedDir = GlobalStore.getAdaptedPluginPath(this.name, namespace || 'default', pluginDirName, version);

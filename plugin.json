@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "agentplugins",
+  "version": "0.2.0",
+  "description": "Portable Agent Plugins v1 plugin shipping the migrate-agent-plugin skill, alongside the plugins CLI (cross-agent plugin manager, converter, and scaffolder).",
+  "author": {
+    "name": "Rayhan Islam Shuvro",
+    "url": "https://github.com/shuvrobhai"
+  },
+  "homepage": "https://github.com/shuvrobhai/agentpm",
+  "repository": "https://github.com/shuvrobhai/agentpm",
+  "license": "MIT",
+  "keywords": ["agent-plugins", "skills", "migration", "hooks", "cross-vendor", "cli"]
+}

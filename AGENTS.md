@@ -1,106 +1,70 @@
-# AGENTS.md - Workspace Agent Rules & Conventions
+# AGENTS.md - Merged AgentPlugins Repo (plugins CLI + portable plugin)
 
-Welcome to the **`agentpm`** codebase (`Universal Agent Extension Manager`). This file contains operational rules, security constraints, architectural guidelines, and hot-cache working memory for AI coding agents in this repository.
+Welcome to the merged **AgentPlugins** repo. This is now a single repository that is BOTH:
 
----
+1. **`plugins`** (formerly `agentpm`) — a cross-agent Agent Plugins CLI: add, use, remove, list, find, update, init, enable, disable, info, convert.
+2. A **conforming Agent Plugins v1 plugin** — `plugin.json` (closed schema) + `skills/migrate-agent-plugin/`, dogfooding the portable format it manages.
 
-## 1. Project Overview & Technology Stack
+## 1. Repo Layout
 
-- **Target**: `agentpm` CLI tool.
-- **Language**: TypeScript (ES2022 / NodeNext ESM).
-- **CLI Framework**: Commander.js.
-- **Git Engine**: `simple-git`.
-- **Global Store Path**: `~/.agentplugins/plugins/<namespace>/<plugin-name>/<version>/`.
+- `src/` — TypeScript CLI (Commander.js, simple-git, NodeNext ESM).
+- `test/` — `node:test` suite run via `tsx --test test/*.test.ts`.
+- `plugin.json` — portable v1 manifest (closed schema: only `$schema`, `name`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, `extensions`).
+- `skills/migrate-agent-plugin/` — the portable migration skill (with `references/`).
+- `docs/`, `memory/`, `CONTEXT.md`, `IDEA.md` — design history and vocabulary.
 
----
+## 2. CLI Shape
 
-## 2. Core Architecture & Adapter Model
+Mirrors the `skills` CLI UX. The `plugins` binary is canonical; `agentpm` is a bin alias.
 
-- **Capabilities-First**: Declarative capabilities (`SKILL.md`, MCP configs) are managed centrally in `~/.agentplugins/plugins/`.
-- **Symlink Materialization**: `AgentAdapter` implementations (`AntigravityAdapter`, `ClaudeCodeAdapter`) materialize plugins into host-specific directories (`.agents/skills/`, `.claudecode/skills/`) via directory symlinks.
-- **Global Store Resolver**: `GlobalStore.findPluginPath(pluginName, version)` resolves packages across namespaces.
+- `plugins add <pkg>` (aliases `a`, `install`) — download + convert to portable v1 + enable. `--no-enable` to skip.
+- `plugins use <pkg>[@skill]>` — prompt for using a plugin without installing.
+- `plugins remove [plugins...]` (aliases `rm`, `uninstall`).
+- `plugins list|ls` — workspace materializations or global store.
+- `plugins find [query]` — GitHub search for `agent-plugins`-tagged repos.
+- `plugins update [plugins...]` (alias `upgrade`) — re-download to latest + reconvert.
+- `plugins init [name]` — scaffold `plugin.json` + `skills/<name>/SKILL.md`.
+- `plugins enable|disable|info|convert` — materialization and conversion.
 
----
+Default conversion target is **`agent-plugins`** (portable v1), emitting closed-schema `plugin.json` + portable `mcp.json` with explicit transports. The old `antigravity` default only applies via explicit `--target` or the `convert` command default.
 
-## 3. Strict Security Constraints
+## 3. Security Constraints
 
-> [!CAUTION]
-> Safety and path isolation are critical. Do not bypass validation functions.
-
-1. **Path Traversal Protection**:
-   - All path components (`namespace`, `pluginName`, `version`, `ref`) MUST be validated using `GlobalStore.validatePathComponent`.
-   - Never allow `.`, `..`, or non-alphanumeric characters outside `/^[a-zA-Z0-9_.-]+$/`.
-2. **Git Flag Injection Prevention**:
-   - Input references (`ref`) passed to git commands MUST NOT start with `-`.
-3. **Safe File Operations**:
-   - Use `fs.lstat` before operating on or removing existing symlinks.
-   - Always delete existing target symlinks before recreating (`fs.symlink`) to prevent nested symlink bugs.
-
----
+1. **Path Traversal**: validate namespace/pluginName/version/ref with `GlobalStore.validatePathComponent` (`/^[a-zA-Z0-9_.-]+$/`, no `.`/`..`).
+2. **Git Flag Injection**: refs passed to git MUST NOT start with `-`.
+3. **Safe File Ops**: `fs.lstat` before removing symlinks; delete existing symlinks before recreating.
+4. **Confirmation**: before modifying existing files or creating new files, explicitly ask the user for permission.
 
 ## 4. Coding Standards
 
-- **Node.js Imports**: Always use the explicit `node:` prefix for standard library modules (e.g., `import path from 'node:path'`, `import fs from 'node:fs/promises'`).
-- **ESM File Extensions**: Explicitly include `.js` extension in local relative import paths (e.g., `import { GlobalStore } from '../core/store.js'`).
-- **Error Handling**: Command handlers (`src/commands/`) must wrap asynchronous execution in `try/catch` blocks and set `process.exitCode = 1` cleanly on failure.
+- `node:` prefix for stdlib imports.
+- Explicit `.js` extension in local relative imports (ESM).
+- Command handlers wrap async work in `try/catch` and set `process.exitCode = 1` on failure.
+- Strict TS: `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`.
 
----
+## 5. Verification
 
-## 5. Verification Commands
-
-Before declaring any task complete, verify the build and CLI functionality:
 ```bash
-# Build TypeScript
-npm run build
-
-# Test CLI Help Output
+npm run build          # tsc
+npm test               # tsx --test test/*.test.ts
 npx tsx src/index.ts --help
-
-# Test Plugin Installation & Materialization
-npx tsx src/index.ts install octocat/Hello-World
-npx tsx src/index.ts enable Hello-World
-npx tsx src/index.ts disable Hello-World
 ```
 
----
+Validate `plugin.json` against the canonical schema before committing:
 
-## 6. Key Documentation References
+```sh
+npx ajv-cli validate --spec=draft2020 \
+  -s ../agent-plugins-spec/schemas/1.0.0/plugin.schema.json \
+  -d plugin.json
+```
 
-- [CONTEXT.md](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/CONTEXT.md) — Domain Glossary & ubiquitous vocabulary.
-- [docs/adr/](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/docs/adr/) — Architectural Decision Records (ADRs 0001 - 0009).
+Keep the repo's own `plugin.json` in sync with skill changes (bump `version`), and keep `skills/migrate-agent-plugin/` aligned with the migration skill copy in the workspace (`agentplugins/.agents/skills/`).
 
----
+## 6. Source of truth
 
-# Memory
+- Agent Plugins spec: `../agent-plugins-spec/spec/1.0.0.md` (normative)
+- Schemas: `../agent-plugins-spec/schemas/1.0.0/`
 
-## Me
-Developer on **agentpm** (Universal Agent Extension Manager).
+## 7. History & Memory
 
-## People
-| Who | Role |
-|-----|------|
-→ Full list: memory/glossary.md, profiles: memory/people/
-
-## Terms
-| Term | Meaning |
-|------|---------|
-| **agentpm** | Universal Agent Extension Manager CLI tool |
-| **Adapter** | Agent-specific module (`AntigravityAdapter`, `ClaudeCodeAdapter`) for materialization |
-| **Declarative Capabilities** | Portable configs (`SKILL.md`, MCP specs) without host execution code |
-| **Global Store** | Local store for downloaded packages (`~/.agentplugins/plugins/`) |
-| **Materialization** | Exposing packages to agents via directory symlinks or file copies |
-| **Namespace** | GitHub user/org grouping for package resolution |
-| **Dematerialize** | Unlinking symlinks before package uninstallation |
-→ Full glossary: memory/glossary.md
-
-## Projects
-| Name | What |
-|------|------|
-| **agentpm** | TypeScript CLI for cross-agent plugin & skill package management |
-→ Details: memory/projects/agentpm.md
-
-## Preferences
-- Node.js explicit imports: use `node:` prefix (e.g. `node:path`, `node:fs/promises`)
-- ESM import paths: explicitly include `.js` extension in relative imports
-- Security: strict path traversal validation via `GlobalStore.validatePathComponent`
-- Target Framework: Commander.js, simple-git, TypeScript (NodeNext ESM)
+See `CONTEXT.md` (glossary), `IDEA.md` (original agentpm concept), `docs/adr/`, and `memory/` for people/terms/projects.

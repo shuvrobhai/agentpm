@@ -1,143 +1,148 @@
-# `agentpm` — Universal Cross-Agent Plugin Manager
+# plugins — Cross-Agent Agent Plugins Manager
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/shuvrobhai/agentpm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-blue.svg)](https://www.typescriptlang.org/)
 
-**`agentpm`** is a **cross-agent plugin manager and conversion engine** for AI coding tools. Its primary purpose is to discover, install, convert, and materialize AI agent **plugins**—composite packages bundling skills, rules, MCP servers, and hooks—seamlessly across multiple AI agent platforms including **Google Antigravity**, **Claude Code**, **OpenAI Codex CLI**, **OpenCode**, and **Pi**.
+**`plugins`** (formerly `agentpm`) is a cross-agent **Agent Plugins** manager and conversion engine — the reference implementation for the [Agent Plugins v1.0.0](https://agent-plugins.org) specification. It mirrors the [`skills` CLI](https://skills.sh) UX, but for portable Agent Plugins: discover, add, use, remove, list, find, update, init, and convert composite packages (skills, MCP servers, rules, hooks) across coding agents including Google Antigravity, Claude Code, OpenAI Codex CLI, OpenCode, and Pi.
+
+This repository is itself a conforming Agent Plugins v1 plugin (`plugin.json` + `skills/migrate-agent-plugin/`), dogfooding the portable format it manages.
 
 ---
 
-## 🌟 Key Features
-
-- **Open Canonical Format Staging**: Standardizes vendor-specific packages upon download into a unified, agent-agnostic format (`plugin.json`, `skills/`, `rules/`, `AGENTS.md`, `mcp_config.json`, `hooks.json`).
-- **Workspace Materialization Priority**: Materializes plugins directly into `.agents/plugins/<plugin-name>` for Google Antigravity without placing package manager files inside project repositories.
-- **Directory Symlinking & Copy Mode**: Defaults to zero-copy directory symlinks from `~/.agentplugins/plugins/` for central updates, with `--copy` flag support for isolated workspace edits.
-- **Cross-Agent Conversion Engine**: Translates vendor-specific variable placeholders (`${CLAUDE_PLUGIN_ROOT}` → `${PLUGIN_ROOT}`), memory files (`CLAUDE.md` → `AGENTS.md`), relative MCP working paths, and hook schemas (`hooks.json` → Antigravity hooks format).
-- **Monorepo Subfolder URL Extraction**: Directly installs plugins hosted within nested GitHub repository folders (e.g. `https://github.com/owner/repo/tree/main/subfolder-plugin`).
-- **Security & Path Isolation**: Strict path traversal validation, Git flag injection protection, and safe dematerialization during uninstallation.
-
----
-
-## 🚀 Installation & Usage
-
-Run `agentpm` globally via Node.js or `npx`:
+## Installation
 
 ```bash
-# Global installation via npm
+# Global installation
 npm install -g agentpm
 
 # Or run directly with npx
 npx agentpm --help
 ```
 
+The `plugins` binary is the canonical entry point; `agentpm` is kept as an alias.
+
 ---
 
-## 📚 Command Reference
+## Command Reference
 
-### 1. `agentpm install <repo>`
-Downloads a plugin package from GitHub into the central Global Store (`~/.agentplugins/plugins/`) and automatically converts it into the **Open Canonical Format**.
+### `plugins add <package>`
+Downloads a plugin package into the central Global Store (`~/.agentplugins/plugins/`), converts it to the **portable v1 format**, and enables it for your agents.
 
 ```bash
 # Install a standard GitHub repository
-agentpm install octocat/Hello-World
+plugins add octocat/Hello-World
 
 # Install a specific branch, tag, or commit SHA
-agentpm install octocat/Hello-World#v1.2.0
+plugins add octocat/Hello-World#v1.2.0
 
-# Install a specific subfolder plugin from a monorepo
-agentpm install https://github.com/anthropics/knowledge-work-plugins/tree/main/pdf-viewer
+# Install a subfolder plugin from a monorepo
+plugins add https://github.com/anthropics/knowledge-work-plugins/tree/main/pdf-viewer
+
+# Install into the store without enabling
+plugins add octocat/Hello-World --no-enable
+
+# Override the conversion target (portable v1 by default)
+plugins add octocat/Hello-World --target antigravity
 ```
 
-### 2. `agentpm enable <plugin>`
-Materializes an installed plugin into your active workspace for detected host agents (or a specified target agent adapter).
+### `plugins use <package>`
+Generate a prompt for using a plugin without installing it. Accepts a GitHub package or a local directory.
 
 ```bash
-# Materialize plugin into .agents/plugins/<plugin> via symlink for Google Antigravity
-agentpm enable pdf-viewer --target antigravity
-
-# Materialize as an isolated, editable local copy instead of a symlink
-agentpm enable pdf-viewer --copy
-
-# Enable globally across global agent directories
-agentpm enable pdf-viewer --global
+plugins use octocat/Hello-World
+plugins use vercel-labs/agent-skills@pdf-viewer   # a single skill within a plugin
+plugins use ./my-plugin
 ```
 
-### 3. `agentpm disable <plugin>`
-Dematerializes active workspace or global links for a plugin without removing it from the central Global Store.
+### `plugins remove [plugins...]`
+Dematerialize active symlinks and purge packages from the Global Store.
 
 ```bash
-agentpm disable pdf-viewer
+plugins remove pdf-viewer
+plugins remove pdf-viewer --global
 ```
 
-### 4. `agentpm list`
-Lists active workspace plugins or inspects installed packages in the central Global Store inventory.
+### `plugins list`
+Lists materialized workspace plugins or the global store inventory.
 
 ```bash
-# List active workspace materializations
-agentpm list
-
-# List all installed packages in the central Global Store
-agentpm list --global
+plugins list
+plugins list --global
+plugins list --json
 ```
 
-### 5. `agentpm info <plugin>`
-Inspects plugin capabilities, manifest headers, contained skills, MCP servers, hooks, and workspace materialization status using the `PackageManifest` module.
+### `plugins find [query]`
+Searches GitHub for plugin packages (repositories tagged `agent-plugins`).
 
 ```bash
-agentpm info pdf-viewer
+plugins find
+plugins find skills
+plugins find skills --owner vercel
 ```
 
-### 6. `agentpm convert <plugin|path>`
-Converts vendor-specific plugin directories or foreign in-workspace packages to target agent-agnostic schemas.
+### `plugins update [plugins...]`
+Re-downloads installed plugins to their latest versions and re-converts them.
 
 ```bash
-# Convert a local vendor plugin directly into .agents/plugins/<plugin> in your workspace
-agentpm convert ./my-claude-plugin --target antigravity
-
-# Convert with custom memory filename and output path
-agentpm convert ./my-plugin --memory AGENTS.md --out ./dist-plugin
+plugins update            # update all installed plugins
+plugins update pdf-viewer
 ```
 
-### 7. `agentpm uninstall <plugin>`
-Safely dematerializes active workspace and global symlinks, then purges the package directory from the Global Store.
+### `plugins init [name]`
+Scaffolds a new portable v1 plugin (`plugin.json` + `skills/<name>/SKILL.md`).
 
 ```bash
-agentpm uninstall pdf-viewer
+plugins init pdf-viewer
+```
+
+### `plugins enable|disable|info`
+Manage materialization for a target agent and inspect plugin capabilities.
+
+```bash
+plugins enable pdf-viewer --target antigravity
+plugins enable pdf-viewer --copy
+plugins disable pdf-viewer
+plugins info pdf-viewer
+```
+
+### `plugins convert <plugin>`
+Converts vendor-specific plugin directories to target agent-agnostic schemas.
+
+```bash
+plugins convert ./my-claude-plugin --target agent-plugins
+plugins convert ./my-plugin --memory AGENTS.md --out ./dist-plugin
 ```
 
 ---
 
-## 🏗️ Architecture & Core Modules
+## Portable v1 Output
 
-`agentpm` is designed around deep, testable architectural modules:
+Conversion and `add` default to the **Agent Plugins v1** target, which emits:
 
-- **`PackageManifest` (`src/core/manifest.ts`)**: Encapsulates manifest parsing, capability detection (skills, rules, MCP, hooks), and format validation behind a single interface (`PackageManifest.load(pluginPath)`).
-- **`MaterializationEngine` (`src/core/materialization.ts`)**: Manages symlink creation, version segment stripping (`main`/`latest`/`v...`), `--copy` mode handling, and safe dematerialization across agent adapters.
-- **`PluginConverter` (`src/core/converter.ts`) & `convertHooks` (`src/core/hook-converter.ts`)**: Pipeline executing text variable transformations, memory file transpilation, MCP path expansion, and Claude-to-Antigravity hook schema translations.
-- **`GlobalStore` (`src/core/store.ts`)**: Manages central storage (`~/.agentplugins/plugins/`) and adapted cache staging (`~/.agentplugins/adapted/`).
+- `plugin.json` — closed-schema manifest (only `$schema`, `name`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, `extensions`).
+- `mcp.json` — portable MCP configuration (`$schema` + `mcpServers` with explicit `stdio` / `streamable-http` / `sse` transports).
+- `skills/<name>/SKILL.md` — skills are the portable unit.
+
+Vendor-specific hooks, commands, agents, LSP, and marketplace metadata are **not** portable v1 components; the `migrate-agent-plugin` skill (in `skills/`) documents keeping them as client compatibility layers.
 
 ---
 
-## 🧪 Development & Testing
+## Architecture
+
+- **`PackageManifest` (`src/core/manifest.ts`)** — manifest parsing, capability detection (skills, rules, MCP, hooks), format validation.
+- **`MaterializationEngine` (`src/core/materialization.ts`)** — symlink creation, version segment stripping, `--copy` mode, safe dematerialization.
+- **`PluginConverter` (`src/core/converter.ts`)** + **`hook-converter.ts`** — pipeline executing variable rewriting, memory transpilation, MCP path expansion, and hook schema translation.
+- **`v1-manifest.ts`** — closed-schema `plugin.json` + portable `mcp.json` builders (the Agent Plugins v1 target).
+- **`GlobalStore` (`src/core/store.ts`)** — central storage (`~/.agentplugins/plugins/`) and adapted cache (`~/.agentplugins/adapted/`).
+
+## Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/shuvrobhai/agentpm.git
-cd agentpm
-
-# Install dependencies
 npm install
-
-# Build TypeScript source
 npm run build
-
-# Run unit test suite (22 tests across 6 test suites)
 npm test
 ```
 
----
+## License
 
-## 📄 License
-
-[MIT License](LICENSE) © 2026 Rayhan Islam Shuvro (`shuvrobhai`)
+MIT License © 2026 Rayhan Islam Shuvro (`shuvrobhai`)

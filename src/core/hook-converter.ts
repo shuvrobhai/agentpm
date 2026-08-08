@@ -410,3 +410,108 @@ export function convertHooksToJson(
   const json = JSON.stringify(result.output, null, 2);
   return { json, result };
 }
+
+export const CODEX_SUPPORTED_EVENTS: Record<string, string> = {
+  'SessionStart': 'session-start',
+  'UserPromptSubmit': 'user-prompt-submit',
+  'Stop': 'stop',
+  'PreToolUse': 'pre-tool-use',
+  'PostToolUse': 'post-tool-use',
+  'session-start': 'session-start',
+  'user-prompt-submit': 'user-prompt-submit',
+  'stop': 'stop',
+  'pre-tool-use': 'pre-tool-use',
+  'post-tool-use': 'post-tool-use',
+};
+
+export interface CodexHookEntry {
+  event: string;
+  matcher?: string;
+  command: string;
+  decision?: 'deny';
+}
+
+export interface CodexHooksFile {
+  hooks: CodexHookEntry[];
+}
+
+export function convertHooksForCodex(
+  claudeHooks: ClaudeHooksFile,
+  pluginName: string
+): { output: CodexHooksFile; result: HookConversionResult } {
+  const hooks = normalizeClaudeHooks(claudeHooks);
+  const output: CodexHooksFile = { hooks: [] };
+  const warnings: ConversionWarning[] = [];
+  let converted = 0;
+  let skipped = 0;
+  let partial = 0;
+  let hookCounter = 0;
+
+  for (const hook of hooks) {
+    hookCounter++;
+    const codexEvent = CODEX_SUPPORTED_EVENTS[hook.event];
+
+    if (!codexEvent) {
+      warnings.push({
+        level: 'warning',
+        hookName: `hook-${hookCounter}`,
+        event: hook.event,
+        message: `SKIPPED: Event "${hook.event}" is not supported by Codex (supports only session-start, user-prompt-submit, stop, pre-tool-use, post-tool-use).`,
+      });
+      skipped++;
+      continue;
+    }
+
+    if (hook.action.type !== 'command') {
+      warnings.push({
+        level: 'warning',
+        hookName: `hook-${hookCounter}`,
+        event: hook.event,
+        message: `SKIPPED: Codex only supports shell script ("command") handlers. Action type "${hook.action.type}" dropped.`,
+      });
+      skipped++;
+      continue;
+    }
+
+    let isBashMatcher = true;
+    if (hook.matcher) {
+      const rawMatcher = typeof hook.matcher === 'string' ? hook.matcher : hook.matcher.toolName || '';
+      if (rawMatcher && rawMatcher !== '*' && rawMatcher !== '.*') {
+        const mapped = TOOL_NAME_MAP[rawMatcher] || rawMatcher;
+        if (mapped !== 'run_command' && mapped !== 'bash' && mapped !== 'shell') {
+          isBashMatcher = false;
+        }
+      }
+    }
+
+    if (!isBashMatcher) {
+      warnings.push({
+        level: 'warning',
+        hookName: `hook-${hookCounter}`,
+        event: hook.event,
+        message: `SKIPPED: Codex hooks only support Bash tool execution. Non-bash tool matcher dropped.`,
+      });
+      skipped++;
+      continue;
+    }
+
+    output.hooks.push({
+      event: codexEvent,
+      matcher: 'bash',
+      command: hook.action.command || '',
+      decision: 'deny',
+    });
+
+    converted++;
+    warnings.push({
+      level: 'info',
+      hookName: `codex-hook-${hookCounter}`,
+      event: codexEvent,
+      message: `Converted: ${hook.event} → ${codexEvent} (bash, deny-only)`,
+    });
+  }
+
+  const summary = `Codex Hook conversion for "${pluginName}": ${converted} converted, ${skipped} skipped.`;
+  return { output, result: { output: {}, converted, skipped, partial, warnings, summary } };
+}
+

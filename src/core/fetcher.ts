@@ -2,7 +2,8 @@ import { simpleGit } from 'simple-git';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { GlobalStore, ParsedRepo } from './store.js';
+import { GlobalStore } from './store.js';
+import type { ParsedRepo } from './store.js';
 
 export interface DownloadResult {
   targetPath: string;

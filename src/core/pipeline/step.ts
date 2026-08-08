@@ -1,4 +1,4 @@
-import { ConversionContext, TransformStepResult } from './context.js';
+import type { ConversionContext, TransformStepResult } from './context.js';
 
 export interface ConversionStep {
   name: string;

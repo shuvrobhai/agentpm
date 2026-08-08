@@ -2,7 +2,6 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import { AntigravityAdapter } from '../src/adapters/antigravity.js';
 import { ClaudeCodeAdapter } from '../src/adapters/claudecode.js';
 import { GlobalStore } from '../src/core/store.js';
@@ -37,7 +36,7 @@ describe('Agent Adapters Unit Tests', () => {
 
     try {
       // Test Enable (symlink mode)
-      await adapter.enable('test-adapter-plugin', 'latest', 'local');
+      await adapter.enable('test-adapter-plugin', 'local', { version: 'latest' });
       const lstat = await fs.lstat(linkPath);
       assert.ok(lstat.isSymbolicLink(), 'Target should be a symbolic link');
 
@@ -66,7 +65,7 @@ describe('Agent Adapters Unit Tests', () => {
 
     try {
       // Test Enable (copy mode)
-      await adapter.enable('test-copy-plugin', 'latest', 'local', { copy: true });
+      await adapter.enable('test-copy-plugin', 'local', { copy: true, version: 'latest' });
       const lstat = await fs.lstat(linkPath);
       assert.ok(lstat.isDirectory(), 'Target should be a real directory');
       assert.ok(!lstat.isSymbolicLink(), 'Target should NOT be a symbolic link');
@@ -95,7 +94,7 @@ describe('Agent Adapters Unit Tests', () => {
 
     try {
       // Test Enable
-      await adapter.enable('test-claude-plugin', 'latest', 'local');
+      await adapter.enable('test-claude-plugin', 'local', { version: 'latest' });
       const lstat = await fs.lstat(linkPath);
       assert.ok(lstat.isSymbolicLink(), 'Target should be a symbolic link');
 
@@ -106,6 +105,22 @@ describe('Agent Adapters Unit Tests', () => {
     } finally {
       await fs.rm(linkPath, { recursive: true, force: true }).catch(() => {});
       await fs.rm(path.join(storePath, 'test-claude-ns'), { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  test('ClaudeCodeAdapter workspace-first enable (local converted plugin without global install)', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    const localWorkspacePath = adapter.getLocalPluginDir('test-local-workspace-plugin');
+    await fs.mkdir(localWorkspacePath, { recursive: true });
+
+    try {
+      await adapter.enable('test-local-workspace-plugin', 'local');
+      const lstat = await fs.lstat(localWorkspacePath);
+      assert.ok(lstat.isDirectory(), 'Workspace plugin should exist and be enabled');
+
+      await adapter.disable('test-local-workspace-plugin', 'local');
+    } finally {
+      await fs.rm(localWorkspacePath, { recursive: true, force: true }).catch(() => {});
     }
   });
 });

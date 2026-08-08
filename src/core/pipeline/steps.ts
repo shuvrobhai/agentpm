@@ -1,7 +1,9 @@
 import path from 'node:path';
-import { ConversionStep } from './step.js';
-import { ConversionContext, TransformStepResult } from './context.js';
-import { convertHooks, ClaudeHooksFile } from '../hook-converter.js';
+import type { ConversionStep } from './step.js';
+import type { ConversionContext, TransformStepResult } from './context.js';
+import { convertHooks, convertHooksForCodex } from '../hook-converter.js';
+import type { ClaudeHooksFile } from '../hook-converter.js';
+import { TomlBuilder } from '../toml-builder.js';
 
 export class VariableRewriteStep implements ConversionStep {
   name = 'VariableRewrite';
@@ -58,6 +60,7 @@ export class McpPathExpansionStep implements ConversionStep {
 
     if (
       context.options.expandMcpPaths &&
+      context.options.targetAdapter !== 'agent-plugins' &&
       (context.basename === '.mcp.json' || context.basename === 'mcp_config.json' || context.basename === 'plugin.json')
     ) {
       try {
@@ -101,21 +104,89 @@ export class HookSchemaConvertStep implements ConversionStep {
     let content = context.content;
     let modified = false;
 
-    if (context.basename === 'hooks.json' && context.options.targetAdapter === 'antigravity') {
+    if (context.basename === 'hooks.json') {
       try {
         const json = JSON.parse(content);
         if (json.hooks) {
           const pluginName = path.basename(context.sourceRoot);
-          const converted = convertHooks(json as ClaudeHooksFile, pluginName);
-          content = JSON.stringify(converted.output, null, 2);
-          if (context.result.hooksConverted !== undefined) {
-            context.result.hooksConverted += converted.converted;
+          if (context.options.targetAdapter === 'antigravity') {
+            const converted = convertHooks(json as ClaudeHooksFile, pluginName);
+            content = JSON.stringify(converted.output, null, 2);
+            if (context.result.hooksConverted !== undefined) {
+              context.result.hooksConverted += converted.converted;
+            }
+            modified = true;
+          } else if (context.options.targetAdapter === 'codex') {
+            const converted = convertHooksForCodex(json as ClaudeHooksFile, pluginName);
+            content = JSON.stringify(converted.output, null, 2);
+            if (context.result.hooksConverted !== undefined) {
+              context.result.hooksConverted += converted.result.converted;
+            }
+            modified = true;
           }
-          modified = true;
         }
       } catch (e) {
         // Fallthrough
       }
+    }
+
+    return { content, modified };
+  }
+}
+
+export class CommandTranspileStep implements ConversionStep {
+  name = 'CommandTranspile';
+
+  async transform(context: ConversionContext): Promise<TransformStepResult> {
+    let content = context.content;
+    let modified = false;
+
+    const isCommandFile = context.srcPath.includes('/commands/') || context.srcPath.includes('\\commands\\');
+    if (isCommandFile && (context.ext === '.md' || context.ext === '.txt')) {
+      const commandName = path.basename(context.srcPath, context.ext);
+      if (!content.startsWith('---')) {
+        const frontmatter = `---\nname: ${commandName}\ndescription: Transpiled slash command ${commandName}\n---\n\n`;
+        content = frontmatter + content;
+        modified = true;
+      }
+    }
+
+    return { content, modified };
+  }
+}
+
+export class AgentTomlTranspileStep implements ConversionStep {
+  name = 'AgentTomlTranspile';
+
+  async transform(context: ConversionContext): Promise<TransformStepResult> {
+    let content = context.content;
+    let modified = false;
+
+    const isAgentFile = context.srcPath.includes('/agents/') || context.srcPath.includes('/subagents/');
+
+    if (isAgentFile && context.options.targetAdapter === 'codex' && (context.ext === '.md' || context.ext === '.txt')) {
+      const agentName = path.basename(context.srcPath, context.ext);
+      let description = `Agent ${agentName}`;
+      let prompt = content;
+
+      if (content.startsWith('---')) {
+        const parts = content.split('---');
+        if (parts.length >= 3 && parts[1]) {
+          const yamlPart = parts[1];
+          prompt = parts.slice(2).join('---').trim();
+          const descMatch = yamlPart.match(/description:\s*(.+)/);
+          if (descMatch && descMatch[1]) {
+            description = descMatch[1].trim().replace(/^['"]|['"]$/g, '');
+          }
+        }
+      }
+
+      content = TomlBuilder.stringifyAgent({
+        name: agentName,
+        description,
+        prompt,
+      });
+      modified = true;
     }
 
     return { content, modified };
@@ -141,3 +212,4 @@ export class TerminologyNeutralizeStep implements ConversionStep {
     return { content, modified };
   }
 }
+

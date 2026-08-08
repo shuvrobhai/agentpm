@@ -66,8 +66,8 @@ export class PackageManifest {
         const raw = await fs.readFile(rootManifestPath, 'utf8');
         manifestData = JSON.parse(raw);
         loadedManifestPath = rootManifestPath;
-      } catch (e) {
-        // Fallthrough if invalid JSON
+      } catch (e: any) {
+        console.warn(`[agentpm] Warning: Failed to parse manifest at ${rootManifestPath}: ${e.message}`);
       }
     }
 
@@ -79,8 +79,8 @@ export class PackageManifest {
           manifestData = JSON.parse(raw);
           loadedManifestPath = claudeManifestPath;
           isCanonical = false;
-        } catch (e) {
-          // Fallthrough
+        } catch (e: any) {
+          console.warn(`[agentpm] Warning: Failed to parse manifest at ${claudeManifestPath}: ${e.message}`);
         }
       }
     }
@@ -92,7 +92,7 @@ export class PackageManifest {
     const author = manifestData?.author || {};
     const schema = manifestData?.$schema || null;
 
-    const capabilities = await this.inspectCapabilities(pluginPath);
+    const capabilities = await this.inspectCapabilities(pluginPath, manifestData);
 
     return new PackageManifest({
       name,
@@ -132,7 +132,7 @@ export class PackageManifest {
     };
   }
 
-  private static async inspectCapabilities(pluginPath: string): Promise<ManifestCapabilities> {
+  private static async inspectCapabilities(pluginPath: string, manifestData?: any): Promise<ManifestCapabilities> {
     const skills: string[] = [];
     const rules: string[] = [];
     const mcpServers: string[] = [];
@@ -154,8 +154,20 @@ export class PackageManifest {
       }
     }
 
-    // 2. Discover MCP Servers (.mcp.json / mcp_config.json)
-    for (const mcpFile of ['.mcp.json', 'mcp_config.json', 'plugin.json']) {
+    // Extract MCP servers from already loaded manifestData if present
+    if (manifestData) {
+      const servers = manifestData.mcpServers || manifestData.mcp;
+      if (servers && typeof servers === 'object') {
+        for (const key of Object.keys(servers)) {
+          if (!mcpServers.includes(key)) {
+            mcpServers.push(key);
+          }
+        }
+      }
+    }
+
+    // 2. Discover MCP Servers from standalone configs (.mcp.json / mcp_config.json)
+    for (const mcpFile of ['.mcp.json', 'mcp_config.json']) {
       const mcpPath = path.join(pluginPath, mcpFile);
       const exists = await fs.access(mcpPath).then(() => true).catch(() => false);
       if (exists) {
@@ -170,8 +182,8 @@ export class PackageManifest {
               }
             }
           }
-        } catch (e) {
-          // Fallthrough
+        } catch (e: any) {
+          console.warn(`[agentpm] Warning: Failed to parse MCP config at ${mcpPath}: ${e.message}`);
         }
       }
     }
@@ -192,3 +204,4 @@ export class PackageManifest {
     return { skills, rules, mcpServers, hooks };
   }
 }
+

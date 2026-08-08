@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { AgentAdapter } from './base.js';
+import type { AgentAdapter } from './base.js';
 import { MaterializationEngine } from '../core/materialization.js';
+import { GlobalStore } from '../core/store.js';
 
 export class AntigravityAdapter implements AgentAdapter {
   name = 'antigravity';
@@ -33,20 +34,53 @@ export class AntigravityAdapter implements AgentAdapter {
     console.log(`[AntigravityAdapter] Uninstalled plugin ${pluginName} (${scope})`);
   }
 
+  async resolveVersion(pluginName: string): Promise<string> {
+    try {
+      const pluginPath = await GlobalStore.findPluginPath(pluginName);
+      return path.basename(pluginPath);
+    } catch {
+      return 'latest';
+    }
+  }
+
+  getPluginDir(pluginName: string, version = 'latest'): string {
+    return GlobalStore.getAdaptedPluginPath(this.name, 'adapted', pluginName, version);
+  }
+
+  getLocalPluginDir(pluginName: string): string {
+    return path.join(process.cwd(), '.agents', 'plugins', pluginName);
+  }
+
   async enable(
     pluginName: string,
-    version = 'latest',
     scope: 'global' | 'local' = 'local',
-    options?: { copy?: boolean }
+    options?: { copy?: boolean | undefined; version?: string | undefined }
   ): Promise<void> {
+    let sourcePath: string | undefined;
+    let version = options?.version;
+
     const baseDir = scope === 'local'
       ? path.join(process.cwd(), '.agents', 'plugins')
       : path.join(os.homedir(), '.gemini', 'config', 'plugins');
+
+    if (scope === 'local' && !options?.version) {
+      const localWorkspacePath = this.getLocalPluginDir(pluginName);
+      const localExists = await fs.access(localWorkspacePath).then(() => true).catch(() => false);
+      if (localExists) {
+        sourcePath = localWorkspacePath;
+        version = 'workspace';
+      }
+    }
+
+    if (!sourcePath) {
+      version = version || (await this.resolveVersion(pluginName));
+    }
 
     const result = await MaterializationEngine.materialize({
       adapterName: this.name,
       pluginName,
       version,
+      sourcePath,
       scope,
       targetBaseDir: baseDir,
       copy: options?.copy,

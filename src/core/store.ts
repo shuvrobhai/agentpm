@@ -5,9 +5,9 @@ import fs from 'node:fs/promises';
 export interface ParsedRepo {
   namespace: string;
   pluginName: string;
-  ref?: string;
+  ref?: string | undefined;
   cloneUrl: string;
-  subfolder?: string;
+  subfolder?: string | undefined;
 }
 
 export interface StoredPlugin {
@@ -71,31 +71,51 @@ export class GlobalStore {
       if (requestedVer === 'latest') {
         const availableVersions = await fs.readdir(pluginDir).catch(() => []);
         const validVersions = availableVersions.filter(v => !v.startsWith('.'));
-        if (validVersions.length > 0) {
+        if (validVersions.length > 0 && validVersions[0]) {
           return path.join(pluginDir, validVersions[0]);
         }
       }
       return null;
     };
 
-    if (pluginIdentifier.includes('/')) {
-      const [namespace, pluginName] = pluginIdentifier.split('/');
-      const pluginDir = path.join(this.getStorePath(), namespace, pluginName);
-      const resolved = await resolveVersionFromPluginDir(pluginDir, version);
+    let targetNamespace: string | undefined;
+    let targetPluginName = pluginIdentifier;
+    let targetVersion = version;
+
+    if (pluginIdentifier.includes('/') || pluginIdentifier.includes('#')) {
+      try {
+        const parsed = this.parseRepoIdentifier(pluginIdentifier);
+        targetNamespace = parsed.namespace;
+        targetPluginName = parsed.pluginName;
+        if (parsed.ref && version === 'latest') {
+          targetVersion = parsed.ref;
+        }
+      } catch {
+        if (pluginIdentifier.includes('/')) {
+          const parts = pluginIdentifier.split('/');
+          targetNamespace = parts[0];
+          targetPluginName = parts[1] || pluginIdentifier;
+        }
+      }
+    }
+
+    if (targetNamespace) {
+      const pluginDir = path.join(this.getStorePath(), targetNamespace, targetPluginName);
+      const resolved = await resolveVersionFromPluginDir(pluginDir, targetVersion);
       if (resolved) return resolved;
-      throw new Error(`Plugin "${pluginIdentifier}@${version}" not found in global store at ${pluginDir}`);
+      throw new Error(`Plugin "${pluginIdentifier}@${targetVersion}" not found in global store at ${pluginDir}`);
     }
 
     const storePath = this.getStorePath();
     const namespaces = await fs.readdir(storePath).catch(() => []);
 
     for (const ns of namespaces) {
-      const pluginDir = path.join(storePath, ns, pluginIdentifier);
-      const resolved = await resolveVersionFromPluginDir(pluginDir, version);
+      const pluginDir = path.join(storePath, ns, targetPluginName);
+      const resolved = await resolveVersionFromPluginDir(pluginDir, targetVersion);
       if (resolved) return resolved;
     }
 
-    throw new Error(`Plugin "${pluginIdentifier}@${version}" not found in any namespace in global store (${storePath})`);
+    throw new Error(`Plugin "${pluginIdentifier}@${targetVersion}" not found in any namespace in global store (${storePath})`);
   }
 
   static async listGlobalPlugins(): Promise<StoredPlugin[]> {
@@ -181,22 +201,22 @@ export class GlobalStore {
 
     if (raw.includes('#')) {
       const parts = raw.split('#');
-      raw = parts[0];
+      raw = parts[0] || raw;
       ref = parts[1];
     }
 
     raw = raw.replace(/\/+$/, '');
 
-    let namespace: string;
-    let pluginName: string;
-    let cloneUrl: string;
+    let namespace = '';
+    let pluginName = '';
+    let cloneUrl = '';
     let subfolder: string | undefined;
 
     if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('git@')) {
       const cleaned = raw.replace(/\.git$/, '');
       if (cleaned.includes('/tree/')) {
         const [repoBase, treePath] = cleaned.split('/tree/');
-        const urlParts = repoBase.split('/');
+        const urlParts = (repoBase || '').split('/');
         const rootRepoName = urlParts.pop() || '';
         namespace = urlParts.pop() || '';
         cloneUrl = `${repoBase}.git`;
@@ -208,7 +228,7 @@ export class GlobalStore {
           }
           if (treeParts.length > 1) {
             subfolder = treeParts.slice(1).join('/');
-            pluginName = treeParts[treeParts.length - 1];
+            pluginName = treeParts[treeParts.length - 1] || rootRepoName;
           } else {
             pluginName = rootRepoName;
           }
@@ -226,7 +246,8 @@ export class GlobalStore {
       if (parts.length !== 2) {
         throw new Error(`Invalid package repository identifier: "${identifier}". Expected format "owner/repo" or GitHub URL.`);
       }
-      [namespace, pluginName] = parts;
+      namespace = parts[0] || '';
+      pluginName = parts[1] || '';
       cloneUrl = `https://github.com/${namespace}/${pluginName}.git`;
     }
 

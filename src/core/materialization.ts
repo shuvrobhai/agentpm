@@ -1,16 +1,18 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { GlobalStore } from './store.js';
-import { PluginConverter, ConversionOptions } from './converter.js';
+import { PluginConverter } from './converter.js';
+import type { ConversionOptions } from './converter.js';
 
 export interface MaterializationOptions {
   adapterName: string;
   pluginName: string;
-  version?: string;
+  version?: string | undefined;
+  sourcePath?: string | undefined;
   scope: 'global' | 'local';
   targetBaseDir: string;
-  copy?: boolean;
-  conversionOptions?: ConversionOptions;
+  copy?: boolean | undefined;
+  conversionOptions?: ConversionOptions | undefined;
 }
 
 export interface MaterializationResult {
@@ -29,7 +31,7 @@ export interface DematerializationOptions {
 export class MaterializationEngine {
   static async materialize(options: MaterializationOptions): Promise<MaterializationResult> {
     const version = options.version || 'latest';
-    const rawSourcePath = await GlobalStore.findPluginPath(options.pluginName, version);
+    const rawSourcePath = options.sourcePath || (await GlobalStore.findPluginPath(options.pluginName, version));
 
     await GlobalStore.ensureDir(options.targetBaseDir);
 
@@ -58,8 +60,19 @@ export class MaterializationEngine {
 
     const conversionResult = await PluginConverter.convertPlugin(rawSourcePath, adaptedDir, conversionOpts);
 
-    const targetSourcePath = conversionResult.filesModified > 0 ? adaptedDir : rawSourcePath;
+    const targetSourcePath = options.sourcePath || (conversionResult.filesModified > 0 ? adaptedDir : rawSourcePath);
     const linkPath = path.join(options.targetBaseDir, pluginDirName);
+
+    if (path.resolve(targetSourcePath) === path.resolve(linkPath)) {
+      // Converted files already exist in-place in local workspace directory
+      return {
+        pluginDirName,
+        materializedPath: linkPath,
+        sourcePath: targetSourcePath,
+        isCopy: false,
+        adaptedFilesCount: conversionResult.filesModified,
+      };
+    }
 
     const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
     if (exists) {

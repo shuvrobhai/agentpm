@@ -1,4 +1,4 @@
-import { ConversionOptions, ConversionResult } from '../converter.js';
+import type { ConversionOptions, ConversionResult } from '../converter.js';
 
 export interface ConversionContext {
   srcPath: string;

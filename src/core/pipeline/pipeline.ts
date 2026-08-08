@@ -1,5 +1,5 @@
-import { ConversionStep } from './step.js';
-import { ConversionContext, TransformStepResult } from './context.js';
+import type { ConversionStep } from './step.js';
+import type { ConversionContext, TransformStepResult } from './context.js';
 
 export class ConversionPipeline {
   private steps: ConversionStep[];

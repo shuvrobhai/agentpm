@@ -12,4 +12,7 @@
 - **Package Inspection**: The process by which `agentpm info` scans and parses declarative manifests (`plugin.json`, `SKILL.md`) to report capabilities and target agent compatibility without executing code.
 - **Plugin Conversion Engine**: The pipeline (`PluginConverter`) that translates vendor-specific variable placeholders (`${CLAUDE_PLUGIN_ROOT}` → `${PLUGIN_ROOT}`), memory references (`CLAUDE.md` → `AGENTS.md`), and relative MCP working paths into agent-agnostic specs.
 - **Staged Adapted Store**: The local store location (`~/.agentplugins/adapted/`) where converted plugin packages are staged for target host adapters prior to materialization.
+- **Open Canonical Format**: The vendor-agnostic standardized package layout stored in `~/.agentplugins/plugins/` containing unified `plugin.json`, `skills/`, `rules/`, `AGENTS.md`, `mcp_config.json`, and `hooks.json`.
+- **Workspace Materialization Priority**: The paradigm where `agentpm enable` materializes plugins directly into `.agents/plugins/<plugin-name>` (or `.agents/skills/`) for Google Antigravity without placing any `agentpm` tool files inside project workspaces.
+
 

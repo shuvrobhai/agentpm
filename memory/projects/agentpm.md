@@ -19,4 +19,4 @@ The Universal Agent Extension Manager. A TypeScript CLI application built on Com
 - `src/commands/` — Command handlers (`install`, `enable`, `disable`, `convert`, `info`, `list`, `uninstall`)
 - `src/core/` — Core store & plugin resolution
 - `src/adapters/` — Target agent adapters
-- `docs/adr/` — Architectural Decision Records (ADRs 0001 - 0008)
+- `docs/adr/` — Architectural Decision Records (ADRs 0001 - 0009)

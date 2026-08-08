@@ -20,5 +20,8 @@
 - **Native Codex Manifest Validator (`src/core/codex-validator.ts`)**: Pure TypeScript schema validation engine verifying that Codex manifests contain valid `interface` metadata, `capabilities` arrays, and no root `hooks`.
 - **Plugin Structural Validator (`isValidPluginEntry`)**: Discovery filter that inspects target provider directories to differentiate actual plugin packages from provider index manifests, blocklists, cache directories, or standalone command files.
 - **Workspace Root Discovery**: Recursive directory resolution mechanism that locates the enclosing workspace root (`.agents/` or `.git/`) to ensure consistent local plugin materialization discovery regardless of current execution directory.
+- **DashboardApi (`src/deploy/dashboard-api.ts`)**: Deep Express Router module exposing all Web Dashboard REST endpoints (`/status`, `/samples`, `/fs/browse`, `/inspect`, `/convert`, `/store`, `/doctor`, `/providers`, `/cli`) behind a composable router seam.
+- **DashboardUi (`src/deploy/dashboard-ui.ts`)**: Deep presentation module exporting pure template renderer function `renderDashboardHtml()` for the single-page Web Dashboard interface.
+
 
 

@@ -1,6 +1,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ManifestValidator,
   validatePortableManifest,
   validateClaudeManifest,
   validateOpenCodeManifest,
@@ -9,7 +10,7 @@ import {
 } from '../src/core/manifest-validator.js';
 
 describe('Multi-Client Manifest Validator Unit Tests', () => {
-  test('Portable v1 manifest validation passes for closed schema', () => {
+  test('ManifestValidator class validates portable v1 manifest for closed schema', () => {
     const valid = {
       $schema: 'https://agentplugins.org/schemas/1.0.0/plugin.schema.json',
       name: 'superpowers',
@@ -17,19 +18,19 @@ describe('Multi-Client Manifest Validator Unit Tests', () => {
       description: 'Core skills library',
       author: 'Jesse Vincent',
     };
-    const res = validatePortableManifest(valid);
+    const res = ManifestValidator.validatePortable(valid);
     assert.equal(res.valid, true);
     assert.equal(res.errors.length, 0);
   });
 
-  test('Portable v1 manifest validation fails when unknown keys exist', () => {
+  test('ManifestValidator class rejects invalid portable manifest with unknown keys', () => {
     const invalid = {
       name: 'superpowers',
       version: '1.0.0',
       description: 'Core skills library',
       unknown_field: 'not allowed in closed schema',
     };
-    const res = validatePortableManifest(invalid);
+    const res = ManifestValidator.validate(invalid, 'portable');
     assert.equal(res.valid, false);
     assert.ok(res.errors.some((e) => e.includes('closed schema')));
   });
@@ -41,7 +42,7 @@ describe('Multi-Client Manifest Validator Unit Tests', () => {
       description: 'Claude Code skills',
       hooks: './hooks/hooks.json',
     };
-    const res = validateClaudeManifest(valid);
+    const res = ManifestValidator.validateClaude(valid);
     assert.equal(res.valid, true);
   });
 
@@ -62,7 +63,7 @@ describe('Multi-Client Manifest Validator Unit Tests', () => {
       skills: ['./.opencode/skills/'],
       plugins: ['opencode-plugin-demo'],
     };
-    const res = validateOpenCodeManifest(valid);
+    const res = ManifestValidator.validateOpenCode(valid);
     assert.equal(res.valid, true);
   });
 
@@ -76,7 +77,7 @@ describe('Multi-Client Manifest Validator Unit Tests', () => {
     assert.equal(res.valid, true);
   });
 
-  test('validateManifestForProvider dispatches to correct provider validator', () => {
+  test('ManifestValidator.validate dispatches to correct provider validator', () => {
     const codexValid = {
       name: 'superpowers',
       version: '1.0.0',
@@ -91,7 +92,7 @@ describe('Multi-Client Manifest Validator Unit Tests', () => {
         defaultPrompt: 'Help me',
       },
     };
-    const codexRes = validateManifestForProvider('codex', codexValid);
+    const codexRes = ManifestValidator.validate(codexValid, 'codex');
     assert.equal(codexRes.valid, true);
 
     const claudeRes = validateManifestForProvider('claude', { name: 'demo', description: 'desc' });

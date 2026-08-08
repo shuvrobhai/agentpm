@@ -34,7 +34,13 @@ export class CodexAdapter extends BaseAgentAdapter {
 
   override get candidateSearchDirs(): { global: string[]; local: string[] } {
     return {
-      global: [path.join(os.homedir(), '.codex', 'plugins')],
+      global: [
+        path.join(os.homedir(), '.codex', 'plugins', 'cache', 'personal'),
+        path.join(os.homedir(), '.codex', 'plugins', 'cache', 'openai-bundled'),
+        path.join(os.homedir(), '.codex', 'plugins', 'cache', 'openai-curated'),
+        path.join(os.homedir(), '.codex', 'plugins'),
+        path.join(os.homedir(), '.codex', 'skills'),
+      ],
       local: [
         path.join(process.cwd(), '.agents', 'plugins'),
         path.join(process.cwd(), '.codex', 'plugins'),

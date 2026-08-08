@@ -1,4 +1,4 @@
-import { PackageAcquirer } from '../core/acquirer.js';
+import { Acquirer } from '../core/acquirer.js';
 import type { AcquiredPackage } from '../core/acquirer.js';
 import { convertDirToPortableCore } from '../core/portable-writer.js';
 
@@ -15,7 +15,7 @@ export async function installCommand(repo: string, options: InstallOptions = {})
     console.log(`Downloading plugin from specification: ${repo}...`);
 
     const acquireOpts = options.force !== undefined ? { force: options.force } : undefined;
-    const result = await PackageAcquirer.acquire(repo, acquireOpts);
+    const result = await Acquirer.acquire(repo, acquireOpts);
 
     if (result.alreadyExisted && result.sourceType === 'git') {
       console.log(`Plugin ${result.namespace}/${result.pluginName}@${result.version} is already installed at ${result.sourcePath}.`);

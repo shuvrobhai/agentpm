@@ -6,8 +6,42 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { GlobalStore } from './store.js';
 import { agentpmFetchCacheDir } from './config.js';
-import { convertDirToPortableCore } from './portable-writer.js';
+import { convertDirToPortableCore, writePortableCore } from './portable-writer.js';
+import { parsePlugin } from '../parser/index.js';
+import { toPortableCore } from '../ir/to-portable-core.js';
 import type { ParsedRepo } from './store.js';
+import type { PluginIR, PortableCoreIR } from '../ir/types.js';
+
+export interface ConvertSourceResult {
+  success: boolean;
+  target: string;
+  outputDir: string;
+  ir: PluginIR;
+  portableCore: PortableCoreIR;
+  files?: string[];
+  warnings?: string[];
+  manualSteps?: string[];
+  manifest?: unknown;
+  skillsCount?: number;
+  mcpCount?: number;
+}
+
+export interface InspectSourceResult {
+  source: string;
+  ir: PluginIR;
+  portableCore: PortableCoreIR;
+  summary: {
+    skills: number;
+    commands: number;
+    agents: number;
+    rules: number;
+    contextFile: number;
+    hooks: number;
+    mcpServers: number;
+    outputStyles: number;
+    workflows: number;
+  };
+}
 
 const execFileAsync = promisify(execFile);
 const COMMIT_SHA_REGEX = /^[0-9a-fA-F]{40}$/;
@@ -130,8 +164,128 @@ export class Acquirer {
     return this.fetchPlugin(parsed, options.force);
   }
 
+  static async convertSource(
+    source: string,
+    target = 'agent-plugins',
+    outputDir?: string
+  ): Promise<ConvertSourceResult> {
+    const ir = await parsePlugin(source);
+    const portableCore = toPortableCore(ir);
+    const PORTABLE_TARGETS = new Set(['agent-plugins', 'v1', 'portable']);
+
+    const outDir = outputDir || `./dist/converted/${target}/${path.basename(source)}`;
+
+    if (PORTABLE_TARGETS.has(target)) {
+      await writePortableCore(portableCore, outDir);
+      return {
+        success: true,
+        target: 'Agent Plugins v1 (Portable)',
+        outputDir: outDir,
+        ir,
+        portableCore,
+        manifest: portableCore.metadata,
+        skillsCount: portableCore.skills.length,
+        mcpCount: portableCore.mcpServers.length,
+      };
+    }
+
+    const { getAdapter } = await import('../adapters/index.js');
+    const adapter = getAdapter(target);
+    const conversionResult = adapter.convert(portableCore, 'workspace');
+
+    if (outputDir) {
+      const { writeConversion } = await import('../adapters/convert-writer.js');
+      await writeConversion(portableCore, adapter, outputDir);
+    }
+
+    return {
+      success: true,
+      target: adapter.displayName || adapter.name,
+      outputDir: outDir,
+      ir,
+      portableCore,
+      files: conversionResult.files.map(f => f.relativePath),
+      warnings: conversionResult.warnings,
+      manualSteps: conversionResult.manualSteps,
+    };
+  }
+
+  static async inspectSource(source: string): Promise<InspectSourceResult> {
+    const ir = await parsePlugin(source);
+    const portableCore = toPortableCore(ir);
+    const summary = {
+      skills: ir.skills.length,
+      commands: ir.commands.length,
+      agents: ir.agents.length,
+      rules: ir.rules.length,
+      contextFile: ir.contextFile ? 1 : 0,
+      hooks: ir.hooks.length,
+      mcpServers: ir.mcpServers.length,
+      outputStyles: ir.outputStyles.length,
+      workflows: ir.workflows.length,
+    };
+    return {
+      source,
+      ir,
+      portableCore,
+      summary,
+    };
+  }
+
   static async update(spec: string, options: AcquireOptions = {}): Promise<AcquiredPackage> {
-    return this.acquire(spec, { ...options, force: true });
+    const registry = await GlobalStore.readRegistry();
+    const parsed = GlobalStore.parseRepoIdentifier(spec);
+    const key = `${parsed.namespace}/${parsed.pluginName}`;
+    const registryEntry = registry.packages[key];
+
+    if (registryEntry) {
+      if (!options.ref && registryEntry.ref) {
+        parsed.ref = registryEntry.ref;
+      }
+    }
+
+    if (options.ref) parsed.ref = options.ref;
+    if (options.subfolder) parsed.subfolder = options.subfolder;
+
+    if (!options.force && registryEntry && registryEntry.resolved_commit) {
+      try {
+        let remoteCommit = '';
+        if (COMMIT_SHA_REGEX.test(parsed.ref || '')) {
+          remoteCommit = parsed.ref!;
+        } else {
+          const lsOut = await runGit(['ls-remote', parsed.cloneUrl, parsed.ref || 'HEAD']);
+          if (lsOut) {
+            const firstLine = lsOut.split('\n')[0];
+            const sha = firstLine?.split(/\s+/)[0];
+            if (sha && COMMIT_SHA_REGEX.test(sha)) {
+              remoteCommit = sha;
+            }
+          }
+        }
+
+        if (remoteCommit && remoteCommit === registryEntry.resolved_commit) {
+          const version = parsed.ref || 'latest';
+          const targetPath = GlobalStore.getPluginPath(parsed.namespace, parsed.pluginName, version);
+          const exists = await fs.access(targetPath).then(() => true).catch(() => false);
+          if (exists) {
+            return {
+              pluginName: parsed.pluginName,
+              namespace: parsed.namespace,
+              version,
+              sourceType: 'git',
+              sourcePath: targetPath,
+              commit: remoteCommit,
+              alreadyExisted: true,
+              vendor: registryEntry.source_vendor,
+            };
+          }
+        }
+      } catch {
+        // Fall through to fetchPlugin if git ls-remote fails
+      }
+    }
+
+    return this.fetchPlugin(parsed, true);
   }
 
   private static async acquireTemporary(parsed: ParsedRepo): Promise<AcquiredPackage> {
@@ -214,36 +368,33 @@ export class Acquirer {
     await fs.rm(targetPath, { recursive: true, force: true }).catch(() => {});
     await convertDirToPortableCore(pluginSourceDir, targetPath);
 
-    try {
-      const contentHash = await contentHashOfDir(targetPath);
-      const deployedFiles = await fs.readdir(targetPath).catch(() => []);
-      await GlobalStore.updateRegistry(`${parsed.namespace}/${parsed.pluginName}`, {
-        source: parsed.cloneUrl,
-        ...(parsed.ref ? { ref: parsed.ref } : {}),
-        resolved_commit: commit,
-        content_hash: contentHash,
-        source_vendor: vendor,
-        installed_at: new Date().toISOString(),
-        clone_path: repoDir,
-        extracted_path: targetPath,
-        deployed_files: deployedFiles,
-      });
-    } catch {
-      // Registry update is best-effort
-    }
+    // Single hashing per operation
+    const contentHash = await contentHashOfDir(targetPath);
+    const deployedFiles = await listDeployedFiles(targetPath);
 
-    try {
-      await writeApmLockfile(
-        path.join(targetPath, APM_LOCKFILE),
-        parsed.pluginName,
-        parsed.cloneUrl,
-        parsed.ref,
-        commit,
-        targetPath,
-      );
-    } catch {
-      // Lockfile is best-effort
-    }
+    // Assembly of source-registry.json entry behind Acquirer seam; failures propagate
+    await GlobalStore.updateRegistry(`${parsed.namespace}/${parsed.pluginName}`, {
+      source: parsed.cloneUrl,
+      ...(parsed.ref ? { ref: parsed.ref } : {}),
+      resolved_commit: commit,
+      content_hash: contentHash,
+      source_vendor: vendor,
+      installed_at: new Date().toISOString(),
+      clone_path: repoDir,
+      extracted_path: targetPath,
+      deployed_files: deployedFiles,
+    });
+
+    await writeApmLockfile(
+      path.join(targetPath, APM_LOCKFILE),
+      parsed.pluginName,
+      parsed.cloneUrl,
+      parsed.ref,
+      commit,
+      targetPath,
+      contentHash,
+      deployedFiles,
+    );
 
     return {
       pluginName: parsed.pluginName,
@@ -258,9 +409,6 @@ export class Acquirer {
     };
   }
 }
-
-/** Alias for backward compatibility */
-export const PackageAcquirer = Acquirer;
 
 export async function cloneRepo(parsed: ParsedRepo, targetDir: string): Promise<AcquiredClone> {
   const isCommitSha = parsed.ref ? COMMIT_SHA_REGEX.test(parsed.ref) : false;
@@ -371,10 +519,12 @@ export async function writeApmLockfile(
   ref: string | undefined,
   commit: string,
   pluginDir: string,
+  precomputedHash?: string,
+  precomputedFiles?: string[],
 ): Promise<void> {
   const [contentHash, deployedFiles] = await Promise.all([
-    contentHashOfDir(pluginDir),
-    listDeployedFiles(pluginDir),
+    precomputedHash !== undefined ? Promise.resolve(precomputedHash) : contentHashOfDir(pluginDir),
+    precomputedFiles !== undefined ? Promise.resolve(precomputedFiles) : listDeployedFiles(pluginDir),
   ]);
 
   const lock: ApmLockfile = {

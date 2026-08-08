@@ -5,11 +5,8 @@ import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { parsePlugin } from '../parser/index.js';
-import { toPortableCore } from '../ir/to-portable-core.js';
-import { getAdapter, listAdapters, AdapterRegistry } from '../adapters/index.js';
-import { writePortableCore } from '../core/portable-writer.js';
-import { writeConversion } from '../adapters/convert-writer.js';
+import { Acquirer } from '../core/acquirer.js';
+import { listAdapters, AdapterRegistry } from '../adapters/index.js';
 import { GlobalStore } from '../core/store.js';
 import { DocsEngine } from './docs-engine.js';
 import { PROVIDER_SPECS } from './provider-specs.js';
@@ -318,27 +315,8 @@ export function createDashboardApiRouter(): Router {
     }
 
     try {
-      const ir = await parsePlugin(source);
-      const portableCore = toPortableCore(ir);
-
-      const summary = {
-        skills: ir.skills.length,
-        commands: ir.commands.length,
-        agents: ir.agents.length,
-        rules: ir.rules.length,
-        contextFile: ir.contextFile ? 1 : 0,
-        hooks: ir.hooks.length,
-        mcpServers: ir.mcpServers.length,
-        outputStyles: ir.outputStyles.length,
-        workflows: ir.workflows.length,
-      };
-
-      res.json({
-        source,
-        ir,
-        portableCore,
-        summary,
-      });
+      const result = await Acquirer.inspectSource(source);
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to inspect plugin' });
     }
@@ -352,37 +330,26 @@ export function createDashboardApiRouter(): Router {
     }
 
     try {
-      const ir = await parsePlugin(source);
-      const portableCore = toPortableCore(ir);
+      const result = await Acquirer.convertSource(source, target, outputDir);
 
-      const outDir = outputDir || `./dist/converted/${target}/${path.basename(source)}`;
-
-      if (target === 'agent-plugins' || target === 'portable') {
-        await writePortableCore(portableCore, outDir);
+      if (target === 'agent-plugins' || target === 'portable' || target === 'v1') {
         return res.json({
           success: true,
-          target: 'Agent Plugins v1 (Portable)',
-          outputDir: outDir,
-          manifest: portableCore.metadata,
-          skillsCount: portableCore.skills.length,
-          mcpCount: portableCore.mcpServers.length,
+          target: result.target,
+          outputDir: result.outputDir,
+          manifest: result.manifest,
+          skillsCount: result.skillsCount,
+          mcpCount: result.mcpCount,
         });
-      }
-
-      const adapter = getAdapter(target);
-      const conversionResult = adapter.convert(portableCore, 'workspace');
-
-      if (outputDir) {
-        await writeConversion(portableCore, adapter, outDir);
       }
 
       res.json({
         success: true,
-        target: adapter.displayName || adapter.name,
-        outputDir: outDir,
-        files: conversionResult.files,
-        warnings: conversionResult.warnings,
-        manualSteps: conversionResult.manualSteps,
+        target: result.target,
+        outputDir: result.outputDir,
+        files: result.files || [],
+        warnings: result.warnings || [],
+        manualSteps: result.manualSteps || [],
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to convert plugin' });

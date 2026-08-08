@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { PackageAcquirer } from '../core/acquirer.js';
+import { Acquirer } from '../core/acquirer.js';
 
 export interface UseOptions {
   skill?: string;
@@ -15,7 +15,7 @@ function parsePackageRef(identifier: string): { raw: string; ref?: string } {
 }
 
 async function resolvePluginDir(identifier: string, ref?: string): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const acquired = await PackageAcquirer.acquire(identifier, { temp: true, ref });
+  const acquired = await Acquirer.acquire(identifier, { temp: true, ref });
   return { dir: acquired.sourcePath, cleanup: acquired.cleanup ?? (async () => {}) };
 }
 

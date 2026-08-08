@@ -91,4 +91,67 @@ describe('Acquirer Unit Tests', () => {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   });
+
+  test('Acquirer.inspectSource returns 9-component IR breakdown', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'acquirer-inspect-test-'));
+    try {
+      await fs.writeFile(
+        path.join(tempDir, 'plugin.json'),
+        JSON.stringify({ name: 'test-inspect', version: '1.0.0', description: 'Inspect test' }),
+        'utf8'
+      );
+      await fs.mkdir(path.join(tempDir, 'skills', 'test-skill'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'skills', 'test-skill', 'SKILL.md'),
+        '---\nname: test-skill\ndescription: Test skill\n---\nTest content',
+        'utf8'
+      );
+
+      const result = await Acquirer.inspectSource(tempDir);
+      assert.equal(result.summary.skills, 1);
+      assert.equal(result.summary.commands, 0);
+      assert.equal(result.summary.agents, 0);
+      assert.equal(result.ir.skills.length, 1);
+      assert.equal(result.portableCore.skills.length, 1);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  test('Acquirer.convertSource performs single-pass conversion to portable and native targets', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'acquirer-convert-src-'));
+    const outPortable = await fs.mkdtemp(path.join(os.tmpdir(), 'acquirer-convert-out-p-'));
+    const outNative = await fs.mkdtemp(path.join(os.tmpdir(), 'acquirer-convert-out-n-'));
+
+    try {
+      await fs.writeFile(
+        path.join(tempDir, 'plugin.json'),
+        JSON.stringify({ name: 'convert-test', version: '1.0.0' }),
+        'utf8'
+      );
+      await fs.mkdir(path.join(tempDir, 'skills', 'demo'), { recursive: true });
+      await fs.writeFile(
+        path.join(tempDir, 'skills', 'demo', 'SKILL.md'),
+        '---\nname: demo\ndescription: Demo skill\n---\nDemo',
+        'utf8'
+      );
+
+      // Portable target
+      const resPortable = await Acquirer.convertSource(tempDir, 'agent-plugins', outPortable);
+      assert.equal(resPortable.success, true);
+      assert.equal(resPortable.target, 'Agent Plugins v1 (Portable)');
+      assert.ok(await fs.access(path.join(outPortable, 'plugin.json')).then(() => true).catch(() => false));
+
+      // Native target
+      const resNative = await Acquirer.convertSource(tempDir, 'antigravity', outNative);
+      assert.equal(resNative.success, true);
+      assert.equal(resNative.target, 'Antigravity CLI');
+      assert.ok(Array.isArray(resNative.files));
+      assert.ok(resNative.files.length > 0);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(outPortable, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(outNative, { recursive: true, force: true }).catch(() => {});
+    }
+  });
 });

@@ -2,7 +2,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import { exists, readJson } from '../utils/fs.js';
-import { PackageAcquirer } from '../core/acquirer.js';
+import { Acquirer } from '../core/acquirer.js';
 import type { SourceInfo, SourceType } from '../ir/types.js';
 
 export async function resolveSource(input: string): Promise<SourceInfo> {
@@ -65,7 +65,7 @@ async function resolveGit(input: string, type: SourceType): Promise<SourceInfo> 
   console.log(`Cloning ${url}`);
 
   try {
-    const acquired = await PackageAcquirer.acquire(url, { temp: true });
+    const acquired = await Acquirer.acquire(url, { temp: true });
     try {
       const meta = await readPluginManifest(acquired.sourcePath);
 
@@ -96,7 +96,7 @@ async function resolveMarketplace(input: string): Promise<SourceInfo> {
   console.log(`Cloning marketplace ${url}`);
 
   try {
-    const acquired = await PackageAcquirer.acquire(url, { temp: true });
+    const acquired = await Acquirer.acquire(url, { temp: true });
     try {
       const marketplaceJson = await readJson<Record<string, unknown>>(
         path.join(acquired.sourcePath, 'marketplace.json')

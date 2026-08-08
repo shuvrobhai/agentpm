@@ -2,16 +2,21 @@ import { AntigravityAdapter } from '../adapters/antigravity.js';
 import { ClaudeCodeAdapter } from '../adapters/claudecode.js';
 
 export async function enableCommand(plugin: string, options: { global?: boolean; target?: string }): Promise<void> {
-  const scope = options.global ? 'global' : 'local';
-  console.log(`Enabling plugin ${plugin} (${scope})...`);
+  try {
+    const scope = options.global ? 'global' : 'local';
+    console.log(`Enabling plugin ${plugin} (${scope})...`);
 
-  const adapters = [new AntigravityAdapter(), new ClaudeCodeAdapter()];
+    const adapters = [new AntigravityAdapter(), new ClaudeCodeAdapter()];
 
-  for (const adapter of adapters) {
-    if (!options.target || options.target === adapter.name) {
-      if (await adapter.detect()) {
-        await adapter.enable(plugin, 'latest', scope);
+    for (const adapter of adapters) {
+      if (!options.target || options.target === adapter.name) {
+        if (await adapter.detect()) {
+          await adapter.enable(plugin, 'latest', scope);
+        }
       }
     }
+  } catch (err: any) {
+    console.error(`Error enabling plugin: ${err.message}`);
+    process.exitCode = 1;
   }
 }

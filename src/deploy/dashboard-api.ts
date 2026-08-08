@@ -21,57 +21,16 @@ export interface InstalledPluginSample {
   source: string;
 }
 
+import { ProviderTopology } from '../core/topology.js';
+
 export async function getRealPluginsList(): Promise<InstalledPluginSample[]> {
-  const result: InstalledPluginSample[] = [];
-
-  const candidateDirs = [
-    { label: 'antigravity', dir: path.join(os.homedir(), '.gemini', 'config', 'plugins') },
-    { label: 'codex', dir: path.join(os.homedir(), '.codex', 'plugins', 'cache', 'personal') },
-    { label: 'codex', dir: path.join(os.homedir(), '.codex', 'plugins', 'cache', 'openai-bundled') },
-    { label: 'codex-skills', dir: path.join(os.homedir(), '.codex', 'skills') },
-    { label: 'claude-code', dir: path.join(os.homedir(), '.claude', 'plugins') },
-    { label: 'opencode', dir: path.join(os.homedir(), '.config', 'opencode', 'plugins') },
-    { label: 'workspace', dir: path.join(process.cwd(), '.agents', 'plugins') },
-  ];
-
-  for (const item of candidateDirs) {
-    try {
-      const entries = await fs.readdir(item.dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.name.startsWith('.')) continue;
-        if (entry.isDirectory() || entry.isSymbolicLink()) {
-          const pluginPath = path.join(item.dir, entry.name);
-
-          // Check if versioned subdirectory exists (e.g. plugin/2026.7.0/.codex-plugin)
-          const subEntries = await fs.readdir(pluginPath, { withFileTypes: true }).catch(() => []);
-          const versionDir = subEntries.find((s) => (s.isDirectory() || s.isSymbolicLink()) && !s.name.startsWith('.'));
-          if (versionDir) {
-            const versionPath = path.join(pluginPath, versionDir.name);
-            const hasPluginManifest = await fs.access(path.join(versionPath, '.codex-plugin')).then(() => true).catch(() => false) ||
-                                     await fs.access(path.join(versionPath, 'plugin.json')).then(() => true).catch(() => false);
-            if (hasPluginManifest) {
-              result.push({
-                name: `${item.label}/${entry.name}@${versionDir.name}`,
-                path: versionPath,
-                description: `Installed ${item.label} plugin version ${versionDir.name}`,
-                source: item.label,
-              });
-              continue;
-            }
-          }
-
-          result.push({
-            name: `${item.label}/${entry.name}`,
-            path: pluginPath,
-            description: `Installed ${item.label} plugin: ${entry.name}`,
-            source: item.label,
-          });
-        }
-      }
-    } catch {
-      // directory may not exist
-    }
-  }
+  const scanned = await ProviderTopology.scanInstalled();
+  const result: InstalledPluginSample[] = scanned.map((item) => ({
+    name: item.name,
+    path: item.path,
+    description: `Installed ${item.provider} plugin${item.version ? ` version ${item.version}` : ''}`,
+    source: item.provider.toLowerCase(),
+  }));
 
   // Include self plugin
   result.push({

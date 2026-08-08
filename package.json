@@ -1,7 +1,7 @@
 {
   "name": "agentpm",
   "version": "0.1.0",
-  "description": "Universal Agent Extension Manager",
+  "description": "Universal Cross-Agent Plugin Manager",
   "type": "module",
   "main": "dist/index.js",
   "bin": {

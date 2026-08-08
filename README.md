@@ -1,10 +1,10 @@
-# `agentpm` — Universal Agent Extension Manager
+# `agentpm` — Universal Cross-Agent Plugin Manager
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/shuvrobhai/agentpm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-blue.svg)](https://www.typescriptlang.org/)
 
-**`agentpm`** is a cross-agent package manager and conversion engine for AI coding extensions. It allows developers to discover, install, convert, and materialize composite plugin packages (skills, rules, MCP servers, hooks) across multiple AI agent platforms—including **Google Antigravity**, **Claude Code**, **OpenAI Codex CLI**, **OpenCode**, and **Pi**.
+**`agentpm`** is a **cross-agent plugin manager and conversion engine** for AI coding tools. Its primary purpose is to discover, install, convert, and materialize AI agent **plugins**—composite packages bundling skills, rules, MCP servers, and hooks—seamlessly across multiple AI agent platforms including **Google Antigravity**, **Claude Code**, **OpenAI Codex CLI**, **OpenCode**, and **Pi**.
 
 ---
 

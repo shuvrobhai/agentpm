@@ -13,7 +13,7 @@ const program = new Command();
 
 program
   .name('agentpm')
-  .description('Universal Agent Extension Manager')
+  .description('Universal Cross-Agent Plugin Manager')
   .version('0.1.0');
 
 program

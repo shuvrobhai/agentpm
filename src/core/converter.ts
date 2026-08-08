@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { convertHooks, ClaudeHooksFile } from './hook-converter.js';
 
 export interface ConversionOptions {
   targetAdapter?: 'antigravity' | 'claude-code' | 'codex' | 'opencode' | 'pi' | string;
@@ -15,6 +16,7 @@ export interface ConversionResult {
   variablesRewritten: number;
   mcpPathsExpanded: number;
   rulesTranspiled: number;
+  hooksConverted?: number;
 }
 
 export class PluginConverter {
@@ -43,6 +45,7 @@ export class PluginConverter {
       variablesRewritten: 0,
       mcpPathsExpanded: 0,
       rulesTranspiled: 0,
+      hooksConverted: 0,
     };
 
     await fs.mkdir(targetDir, { recursive: true });
@@ -164,11 +167,28 @@ export class PluginConverter {
           content = JSON.stringify(json, null, 2);
         }
       } catch (e) {
-        // Not valid JSON or parsing error, fallback to regex path expansion
+        // Not valid JSON or parsing error
       }
     }
 
-    // 4. Terminology Neutralization (Claude / Cowork -> coding agent)
+    // 4. Hooks Schema Conversion (hooks.json for Antigravity target)
+    if (basename === 'hooks.json' && options.targetAdapter === 'antigravity') {
+      try {
+        const json = JSON.parse(content);
+        if (json.hooks) {
+          const pluginName = path.basename(sourceRoot);
+          const converted = convertHooks(json as ClaudeHooksFile, pluginName);
+          content = JSON.stringify(converted.output, null, 2);
+          if (result.hooksConverted !== undefined) {
+            result.hooksConverted += converted.converted;
+          }
+        }
+      } catch (e) {
+        // Not valid JSON or error converting
+      }
+    }
+
+    // 5. Terminology Neutralization (Claude / Cowork -> coding agent)
     if (options.neutralizeTerms && (ext === '.md' || ext === '.txt')) {
       content = content.replace(/\bClaude Code\b/g, 'coding agent');
       content = content.replace(/\bClaude\b/g, 'coding agent');

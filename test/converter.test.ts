@@ -4,9 +4,48 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import { PluginConverter } from '../src/core/converter.js';
+import { convertHooks } from '../src/core/hook-converter.js';
 
-describe('PluginConverter Unit Tests', () => {
-  test('convertPlugin rewrites plugin variables and memory files', async () => {
+describe('PluginConverter & HookConverter Unit Tests', () => {
+  test('convertHooks converts Claude Code hooks to Antigravity schema', () => {
+    const claudeHooks = {
+      hooks: [
+        {
+          event: 'PreToolUse' as const,
+          matcher: { toolName: 'Bash' },
+          action: { type: 'command' as const, command: './check.sh' },
+        },
+        {
+          event: 'PostToolUse' as const,
+          matcher: { toolName: 'Write' },
+          action: { type: 'command' as const, command: './format.sh' },
+        },
+        {
+          event: 'SessionStart' as const,
+          action: { type: 'command' as const, command: './init.sh' },
+        },
+      ],
+    };
+
+    const result = convertHooks(claudeHooks, 'test-plugin');
+    assert.equal(result.converted, 2);
+    assert.equal(result.skipped, 1);
+
+    const keys = Object.keys(result.output);
+    assert.ok(keys.length >= 2);
+
+    const preToolHook = Object.values(result.output).find(h => h.PreToolUse);
+    assert.ok(preToolHook);
+    assert.equal(preToolHook?.PreToolUse?.[0].matcher, 'run_command');
+    assert.equal(preToolHook?.PreToolUse?.[0].hooks[0].command, './check.sh');
+
+    const postToolHook = Object.values(result.output).find(h => h.PostToolUse);
+    assert.ok(postToolHook);
+    assert.equal(postToolHook?.PostToolUse?.[0].matcher, 'write_to_file');
+    assert.equal(postToolHook?.PostToolUse?.[0].hooks[0].command, './format.sh');
+  });
+
+  test('convertPlugin rewrites plugin variables, memory files, and converts hooks', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-test-src-'));
     const destDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-test-dest-'));
 
@@ -40,6 +79,21 @@ describe('PluginConverter Unit Tests', () => {
         'utf8'
       );
 
+      const hooksPath = path.join(tmpDir, 'hooks.json');
+      await fs.writeFile(
+        hooksPath,
+        JSON.stringify({
+          hooks: [
+            {
+              event: 'PreToolUse',
+              matcher: { toolName: 'Bash' },
+              action: { type: 'command', command: './validate.sh' }
+            }
+          ]
+        }, null, 2),
+        'utf8'
+      );
+
       // 2. Run conversion
       const result = await PluginConverter.convertPlugin(tmpDir, destDir, {
         targetAdapter: 'antigravity',
@@ -49,11 +103,12 @@ describe('PluginConverter Unit Tests', () => {
         neutralizeTerms: true,
       });
 
-      assert.ok(result.filesProcessed >= 3);
-      assert.ok(result.filesModified >= 2);
+      assert.ok(result.filesProcessed >= 4);
+      assert.ok(result.filesModified >= 3);
       assert.ok(result.variablesRewritten >= 1);
       assert.ok(result.mcpPathsExpanded >= 1);
       assert.equal(result.rulesTranspiled, 1);
+      assert.equal(result.hooksConverted, 1);
 
       // 3. Verify output files
       const destAgentsMd = path.join(destDir, 'AGENTS.md');
@@ -72,6 +127,12 @@ describe('PluginConverter Unit Tests', () => {
       const expandedCwd = mcpContent.mcpServers.testServer.cwd;
       assert.equal(expandedCwd, path.resolve(tmpDir, './server'));
       assert.ok(path.isAbsolute(expandedCwd));
+
+      const destHooksJson = JSON.parse(await fs.readFile(path.join(destDir, 'hooks.json'), 'utf8'));
+      const hookEntry = Object.values(destHooksJson)[0] as any;
+      assert.ok(hookEntry.PreToolUse);
+      assert.equal(hookEntry.PreToolUse[0].matcher, 'run_command');
+      assert.equal(hookEntry.PreToolUse[0].hooks[0].command, './validate.sh');
 
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });

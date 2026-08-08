@@ -1,6 +1,6 @@
 # AGENTS.md - Workspace Agent Rules & Conventions
 
-Welcome to the **`agentpm`** codebase (`Universal Agent Extension Manager`). This file contains operational rules, security constraints, and architectural guidelines for AI agents working in this repository.
+Welcome to the **`agentpm`** codebase (`Universal Agent Extension Manager`). This file contains operational rules, security constraints, architectural guidelines, and hot-cache working memory for AI coding agents in this repository.
 
 ---
 
@@ -69,3 +69,39 @@ npx tsx src/index.ts disable Hello-World
 - [CONTEXT.md](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/CONTEXT.md) — Domain Glossary & ubiquitous vocabulary.
 - [docs/adr/](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/docs/adr/) — Architectural Decision Records.
 - [docs/sprint-plan.md](file:///Users/rayhanislamshuvro/Developer/skills-and-plugins/agnent-plugins/docs/sprint-plan.md) — Project sprint backlog & historical context.
+
+---
+
+# Memory
+
+## Me
+Developer on **agentpm** (Universal Agent Extension Manager).
+
+## People
+| Who | Role |
+|-----|------|
+→ Full list: memory/glossary.md, profiles: memory/people/
+
+## Terms
+| Term | Meaning |
+|------|---------|
+| **agentpm** | Universal Agent Extension Manager CLI tool |
+| **Adapter** | Agent-specific module (`AntigravityAdapter`, `ClaudeCodeAdapter`) for materialization |
+| **Declarative Capabilities** | Portable configs (`SKILL.md`, MCP specs) without host execution code |
+| **Global Store** | Local store for downloaded packages (`~/.agentplugins/plugins/`) |
+| **Materialization** | Exposing packages to agents via directory symlinks or file copies |
+| **Namespace** | GitHub user/org grouping for package resolution |
+| **Dematerialize** | Unlinking symlinks before package uninstallation |
+→ Full glossary: memory/glossary.md
+
+## Projects
+| Name | What |
+|------|------|
+| **agentpm** | TypeScript CLI for cross-agent plugin & skill package management |
+→ Details: memory/projects/agentpm.md
+
+## Preferences
+- Node.js explicit imports: use `node:` prefix (e.g. `node:path`, `node:fs/promises`)
+- ESM import paths: explicitly include `.js` extension in relative imports
+- Security: strict path traversal validation via `GlobalStore.validatePathComponent`
+- Target Framework: Commander.js, simple-git, TypeScript (NodeNext ESM)

@@ -7,6 +7,7 @@ import { disableCommand } from './commands/disable.js';
 import { listCommand } from './commands/list.js';
 import { infoCommand } from './commands/info.js';
 import { uninstallCommand } from './commands/uninstall.js';
+import { convertCommand } from './commands/convert.js';
 
 const program = new Command();
 
@@ -61,5 +62,14 @@ program
   .option('-g, --global', 'Also dematerialize from global agent directories')
   .action(uninstallCommand);
 
-program.parse(process.argv);
+program
+  .command('convert')
+  .description('Convert vendor-specific plugin files to target agent-agnostic specs')
+  .argument('<plugin>', 'Plugin directory path or installed plugin identifier')
+  .option('-t, --target <agent>', 'Target agent adapter (e.g., antigravity, claude-code)', 'antigravity')
+  .option('-m, --memory <filename>', 'Memory filename (AGENTS.md or CLAUDE.md)', 'AGENTS.md')
+  .option('-v, --var-prefix <prefix>', 'Root variable placeholder prefix', 'PLUGIN_ROOT')
+  .option('-o, --out <dir>', 'Output destination directory')
+  .action(convertCommand);
 
+program.parse(process.argv);

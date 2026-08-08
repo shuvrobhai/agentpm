@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { AgentAdapter } from './base.js';
 import { GlobalStore } from '../core/store.js';
+import { PluginConverter } from '../core/converter.js';
 
 export class AntigravityAdapter implements AgentAdapter {
   name = 'antigravity';
@@ -21,6 +22,10 @@ export class AntigravityAdapter implements AgentAdapter {
     return ['skills', 'mcp', 'hooks'];
   }
 
+  supportsDirectSymlink(): boolean {
+    return true;
+  }
+
   async install(pluginPath: string, scope: 'global' | 'local'): Promise<void> {
     console.log(`[AntigravityAdapter] Installed plugin at ${pluginPath} (${scope})`);
   }
@@ -30,16 +35,30 @@ export class AntigravityAdapter implements AgentAdapter {
   }
 
   async enable(pluginName: string, version = 'latest', scope: 'global' | 'local'): Promise<void> {
-    const sourcePath = await GlobalStore.findPluginPath(pluginName, version);
+    const rawSourcePath = await GlobalStore.findPluginPath(pluginName, version);
     const baseDir = scope === 'local'
       ? path.join(process.cwd(), '.agents', 'skills')
       : path.join(os.homedir(), '.gemini', 'config', 'skills');
 
     await GlobalStore.ensureDir(baseDir);
 
-    const pluginDirName = path.basename(sourcePath) === 'latest'
-      ? path.basename(path.dirname(sourcePath))
-      : path.basename(sourcePath);
+    const pluginDirName = path.basename(rawSourcePath) === 'latest'
+      ? path.basename(path.dirname(rawSourcePath))
+      : path.basename(rawSourcePath);
+
+    const namespace = path.basename(path.dirname(path.dirname(rawSourcePath)));
+    const adaptedDir = GlobalStore.getAdaptedPluginPath(this.name, namespace || 'default', pluginDirName, version);
+
+    // Convert plugin to Antigravity-adapted format
+    const conversionResult = await PluginConverter.convertPlugin(rawSourcePath, adaptedDir, {
+      targetAdapter: 'antigravity',
+      memoryFilename: 'AGENTS.md',
+      rootVarName: 'PLUGIN_ROOT',
+      expandMcpPaths: true,
+      neutralizeTerms: true,
+    });
+
+    const targetSourcePath = conversionResult.filesModified > 0 ? adaptedDir : rawSourcePath;
 
     const linkPath = path.join(baseDir, pluginDirName);
 
@@ -48,8 +67,8 @@ export class AntigravityAdapter implements AgentAdapter {
       await fs.rm(linkPath, { recursive: true, force: true });
     }
 
-    await fs.symlink(sourcePath, linkPath, 'dir');
-    console.log(`[AntigravityAdapter] Materialized symlink: ${linkPath} -> ${sourcePath}`);
+    await fs.symlink(targetSourcePath, linkPath, 'dir');
+    console.log(`[AntigravityAdapter] Materialized symlink: ${linkPath} -> ${targetSourcePath} (${conversionResult.filesModified} files adapted)`);
   }
 
   async disable(pluginName: string, scope: 'global' | 'local'): Promise<void> {

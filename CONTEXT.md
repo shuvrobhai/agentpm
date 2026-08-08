@@ -10,3 +10,6 @@
 - **Symlink Materialization**: A technique where `agentpm` adapters create symlinks in the target agent's specific directories pointing to the global store, allowing zero-copy sharing and live updates.
 - **Dematerialize-on-Uninstall**: Safety mechanism where `agentpm uninstall` detects and unlinks all active workspace/global symlinks pointing to a package before removing its files from the global store.
 - **Package Inspection**: The process by which `agentpm info` scans and parses declarative manifests (`plugin.json`, `SKILL.md`) to report capabilities and target agent compatibility without executing code.
+- **Plugin Conversion Engine**: The pipeline (`PluginConverter`) that translates vendor-specific variable placeholders (`${CLAUDE_PLUGIN_ROOT}` → `${PLUGIN_ROOT}`), memory references (`CLAUDE.md` → `AGENTS.md`), and relative MCP working paths into agent-agnostic specs.
+- **Staged Adapted Store**: The local store location (`~/.agentplugins/adapted/`) where converted plugin packages are staged for target host adapters prior to materialization.
+

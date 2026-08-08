@@ -23,6 +23,37 @@ export class GlobalStore {
     return path.join(os.homedir(), '.agentplugins', 'plugins');
   }
 
+  static getAdaptedStorePath(): string {
+    return path.join(os.homedir(), '.agentplugins', 'adapted');
+  }
+
+  static getAdaptedPluginPath(adapterName: string, namespace: string, pluginName: string, version: string): string {
+    this.validatePathComponent(adapterName, 'adapterName');
+    this.validatePathComponent(namespace, 'namespace');
+    this.validatePathComponent(pluginName, 'pluginName');
+    this.validatePathComponent(version, 'version');
+    return path.join(this.getAdaptedStorePath(), adapterName, namespace, pluginName, version);
+  }
+
+  static async copyDirectoryDereferenced(sourceDir: string, targetDir: string): Promise<void> {
+    await fs.mkdir(targetDir, { recursive: true });
+    const entries = await fs.readdir(sourceDir);
+
+    for (const entryName of entries) {
+      const srcPath = path.join(sourceDir, entryName);
+      const destPath = path.join(targetDir, entryName);
+
+      const stat = await fs.stat(srcPath).catch(() => null);
+      if (!stat) continue;
+
+      if (stat.isDirectory()) {
+        await this.copyDirectoryDereferenced(srcPath, destPath);
+      } else if (stat.isFile()) {
+        await fs.copyFile(srcPath, destPath);
+      }
+    }
+  }
+
   static getPluginPath(namespace: string, pluginName: string, version: string): string {
     this.validatePathComponent(namespace, 'namespace');
     this.validatePathComponent(pluginName, 'pluginName');

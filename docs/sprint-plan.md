@@ -25,6 +25,7 @@
 | **P1** | Error Handling | **ERR-01**: Wrap `enableCommand` in `try/catch` block (`src/commands/enable.ts`) | 1 pt | Pair | None |
 | **P2** | Feature | **FEAT-01**: Real `.agents` symlinking & detection in `AntigravityAdapter` (`src/adapters/antigravity.ts`) | 2 pts | Pair | P0 Items |
 | **P2** | Feature | **FEAT-02**: Real `.claudecode` symlinking in `ClaudeCodeAdapter` (`src/adapters/claudecode.ts`) | 2 pts | Pair | FEAT-01 |
+| **P2** | Feature | **FEAT-03**: Cross-Agent Plugin Conversion Engine (`PluginConverter` & `agentpm convert`) | 3 pts | Pair | FEAT-01 |
 
 ---
 
@@ -35,14 +36,16 @@
 | Path traversal check too restrictive | Valid GitHub org names rejected | Use standard alphanumeric regex (`/^[a-zA-Z0-9_.-]+$/`) |
 | Commit SHA shallow clone fails | Partial clones missing ref | Perform shallow clone first, then `git checkout <sha>` if ref is 40-char SHA |
 | Windows symlink permissions | `fs.symlink` fails on non-admin Windows | Test junction points or copy fallback if symlink fails |
+| Vendor-specific path variable incompatibility | Skill instructions break when executed by non-vendor agents | Transform `${CLAUDE_PLUGIN_ROOT}` to `${PLUGIN_ROOT}` during enablement |
 
 ---
 
 ## 4. Definition of Done
-- [ ] All P0 critical security issues resolved and verified with tests
-- [ ] No regression on `agentpm install` or `agentpm enable`
-- [ ] `npm run build` (`tsc`) passes cleanly without warnings
-- [ ] Code committed to Git repository
+- [x] All P0 critical security issues resolved and verified with tests
+- [x] No regression on `agentpm install` or `agentpm enable`
+- [x] Cross-agent plugin conversion engine implemented (`PluginConverter`, `agentpm convert`, ADR 0008)
+- [x] `npm run build` (`tsc`) passes cleanly without warnings
+- [x] Unit test suite (`npx tsx --test test/*.test.ts`) passes all 16 test cases cleanly
 
 ---
 

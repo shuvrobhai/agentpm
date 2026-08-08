@@ -16,13 +16,15 @@ import { convertCommand } from './commands/convert.js';
 import { inspectCommand } from './commands/inspect.js';
 import { docsCommand } from './commands/docs.js';
 import { providersCommand } from './commands/providers.js';
+import { doctorCommand } from './commands/doctor.js';
 
 const program = new Command();
 
 program
   .name('plugins')
-  .description('Manage cross-agent Agent Plugins: add, use, remove, list, find, update, init.')
+  .description('Manage cross-agent Agent Plugins: add, use, remove, list, find, update, init, doctor.')
   .version('0.2.0');
+
 
 program
   .command('add')
@@ -150,7 +152,16 @@ program
   .option('-p, --provider <name>', 'Filter by provider (antigravity, opencode, claude, codex)')
   .action(providersCommand);
 
+program
+  .command('doctor')
+  .alias('doc')
+  .description('Run system health checks, validate manifests, and clean broken symlinks')
+  .option('-f, --fix', 'Automatically remove dangling symlinks and clean invalid entries')
+  .option('--json', 'Output diagnostic report formatted as JSON')
+  .action(doctorCommand);
+
 program.addHelpText('after', `
+
 Examples:
   $ plugins add octocat/Hello-World
   $ plugins add anthropics/knowledge-work-plugins/tree/main/pdf-viewer --no-enable

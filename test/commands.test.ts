@@ -6,6 +6,9 @@ import { GlobalStore } from '../src/core/store.js';
 import { listCommand } from '../src/commands/list.js';
 import { infoCommand } from '../src/commands/info.js';
 import { uninstallCommand } from '../src/commands/uninstall.js';
+import { isolateAgentStore } from './helpers.js';
+
+isolateAgentStore();
 
 describe('Command Handlers Unit Tests', () => {
   test('listCommand executes without error (workspace & global scopes)', async () => {

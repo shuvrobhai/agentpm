@@ -165,4 +165,50 @@ describe('Acquirer + APM-shaped lockfile (ADR 0013)', () => {
     assert.equal(parsed.cloneUrl, 'file:///tmp/some/repo');
     assert.equal(parsed.pluginName, 'repo');
   });
+
+  test('PackageAcquirer fetchPlugin persists pristine clone in repos/<namespace>/<plugin> and converts to portable core in plugins/', async () => {
+    const { PackageAcquirer } = await import('../src/core/acquirer.js');
+
+    const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-pristine-test-'));
+    const repoDir = path.join(fixture, 'test-repo');
+    const prevStore = process.env.AGENTPM_STORE;
+    const prevCache = process.env.AGENTPM_CACHE;
+    process.env.AGENTPM_STORE = path.join(fixture, 'store');
+    process.env.AGENTPM_CACHE = path.join(fixture, 'cache');
+
+    try {
+      await fs.mkdir(path.join(repoDir, 'skills', 'greet'), { recursive: true });
+      await fs.writeFile(
+        path.join(repoDir, 'plugin.json'),
+        JSON.stringify({ name: 'pristine-demo', version: '1.0.0', description: 'Test pristine repo' }),
+        'utf8'
+      );
+      await fs.writeFile(path.join(repoDir, 'skills', 'greet', 'SKILL.md'), '---\nname: greet\ndescription: Greet skill\n---\nHello', 'utf8');
+
+      await execFileAsync('git', ['init', repoDir], { cwd: repoDir });
+      await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoDir });
+      await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: repoDir });
+      await execFileAsync('git', ['add', '.'], { cwd: repoDir });
+      await execFileAsync('git', ['commit', '-m', 'init'], { cwd: repoDir });
+
+      const url = `file://${repoDir}`;
+      const parsed = GlobalStore.parseRepoIdentifier(url);
+      const acquired = await PackageAcquirer.fetchPlugin(parsed, true);
+
+      assert.ok(acquired.clonePath, 'clonePath must be returned');
+      assert.ok(await fs.access(path.join(acquired.clonePath, '.git')).then(() => true).catch(() => false), 'pristine clone in repos/ must retain .git');
+      assert.ok(await fs.access(path.join(acquired.sourcePath, 'plugin.json')).then(() => true).catch(() => false), 'portable package must exist');
+      assert.equal(
+        await fs.access(path.join(acquired.sourcePath, '.git')).then(() => true).catch(() => false),
+        false,
+        'portable package in plugins/ must NOT retain .git'
+      );
+    } finally {
+      if (prevStore === undefined) delete process.env.AGENTPM_STORE;
+      else process.env.AGENTPM_STORE = prevStore;
+      if (prevCache === undefined) delete process.env.AGENTPM_CACHE;
+      else process.env.AGENTPM_CACHE = prevCache;
+      await fs.rm(fixture, { recursive: true, force: true });
+    }
+  });
 });

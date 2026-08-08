@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { GlobalStore } from './store.js';
 import { agentpmFetchCacheDir } from './config.js';
+import { convertDirToPortableCore } from './portable-writer.js';
 import type { ParsedRepo } from './store.js';
 
 const execFileAsync = promisify(execFile);
@@ -189,13 +190,22 @@ export class PackageAcquirer {
       pluginSourceDir = acquired.pluginDir;
       commit = acquired.commit;
       await fs.writeFile(path.join(fetchCacheDir, '.complete'), acquired.commit, 'utf8');
-
-      await fs.rm(repoDir, { recursive: true, force: true }).catch(() => {});
-      await GlobalStore.copyDirectoryDereferenced(path.join(fetchCacheDir, 'repo'), repoDir).catch(() => {});
     }
 
+    // Pristine tier: mirror the pristine clone into repos/<namespace>/<plugin>
+    // so clone_path in the registry points at a real checkout (the fetch cache
+    // is disposable).
+    await fs.rm(repoDir, { recursive: true, force: true }).catch(() => {});
+    await GlobalStore.copyDirectoryDereferenced(pluginSourceDir, repoDir).catch(() => {});
+
     const vendor = await detectSourceVendor(pluginSourceDir);
-    await GlobalStore.copyDirectoryDereferenced(pluginSourceDir, targetPath);
+
+    // Single conversion seam (ADR 0013): parse the pristine source → portable
+    // core → emit into the store plugin dir. The store holds a validated
+    // portable package (plugin.json + skills/ + client-adapters/), never a raw
+    // repository dump.
+    await fs.rm(targetPath, { recursive: true, force: true }).catch(() => {});
+    await convertDirToPortableCore(pluginSourceDir, targetPath);
 
     try {
       const contentHash = await contentHashOfDir(targetPath);

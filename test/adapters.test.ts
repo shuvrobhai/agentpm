@@ -9,6 +9,9 @@ import { CodexAdapter } from '../src/adapters/codex.js';
 import { OpenCodeAdapter } from '../src/adapters/opencode.js';
 import { BaseAgentAdapter } from '../src/adapters/base.js';
 import { GlobalStore } from '../src/core/store.js';
+import { isolateAgentStore } from './helpers.js';
+
+isolateAgentStore();
 
 describe('Agent Adapters Unit Tests', () => {
   test('AntigravityAdapter properties & detection', async () => {
@@ -98,7 +101,7 @@ describe('Agent Adapters Unit Tests', () => {
       assert.ok(lstat.isSymbolicLink(), 'Target should be a symbolic link');
 
       const realPath = await fs.realpath(linkPath);
-      assert.equal(realPath, mockSource);
+      assert.equal(realPath, await fs.realpath(mockSource));
 
       // Test Disable
       await adapter.disable('test-adapter-plugin', 'local');

@@ -1,0 +1,8 @@
+{
+    "name": "AgentPM - Cross-Agent Plugin Manager",
+    "description": "Cross-agent Agent Plugins manager CLI and web explorer for adding, using, listing, converting, and inspecting agent skills and plugins across Antigravity, Claude Code, Codex, and OpenCode.",
+    "requestFramePermissions": [],
+    "majorCapabilities": [
+        "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+    ]
+}

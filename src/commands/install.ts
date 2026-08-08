@@ -21,8 +21,12 @@ export async function installCommand(repo: string, options: InstallOptions = {})
       console.log(`Plugin ${result.namespace}/${result.pluginName}@${result.version} is already installed at ${result.sourcePath}.`);
       console.log(`Use '--force' to redownload.`);
     } else {
-      console.log(`Converting downloaded plugin to portable format (target: ${targetAdapter})...`);
-      await convertDirToPortableCore(result.sourcePath, result.sourcePath);
+      if (result.sourceType === 'local') {
+        console.log(`Converting local plugin to portable format (target: ${targetAdapter})...`);
+        await convertDirToPortableCore(result.sourcePath, result.sourcePath);
+      } else {
+        console.log(`Converted downloaded plugin to portable format (target: ${targetAdapter}).`);
+      }
 
       console.log(`Successfully installed ${result.namespace}/${result.pluginName}@${result.version}:`);
       console.log(`  ${result.sourcePath}`);

@@ -24,7 +24,6 @@ export async function updateCommand(plugins: string[], options: UpdateOptions = 
         const parsed = GlobalStore.parseRepoIdentifier(identifier);
         console.log(`Updating ${parsed.namespace}/${parsed.pluginName}...`);
         const result = await PackageAcquirer.fetchPlugin(parsed, true);
-        await convertDirToPortableCore(result.sourcePath, result.sourcePath);
         console.log(`  Updated ${parsed.namespace}/${parsed.pluginName}@${result.version} -> ${result.sourcePath}`);
       } catch (err: any) {
         console.error(`  Failed to update ${identifier}: ${err.message}`);

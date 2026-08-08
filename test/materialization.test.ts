@@ -5,6 +5,9 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import { MaterializationEngine } from '../src/core/materialization.js';
 import { GlobalStore } from '../src/core/store.js';
+import { isolateAgentStore } from './helpers.js';
+
+isolateAgentStore();
 
 describe('MaterializationEngine Unit Tests', () => {
   test('MaterializationEngine materializes symlink and dematerializes cleanly', async () => {

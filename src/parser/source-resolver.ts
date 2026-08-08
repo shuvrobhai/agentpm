@@ -118,7 +118,11 @@ async function resolveMarketplace(input: string): Promise<SourceInfo> {
         const candidatePaths = [
           path.join(acquired.sourcePath, pluginName),
           path.join(acquired.sourcePath, 'plugins', pluginName),
+          path.join(acquired.sourcePath, '.agents', 'plugins', pluginName),
+          path.join(acquired.sourcePath, '.gemini', 'config', 'plugins', pluginName),
           path.join(acquired.sourcePath, '.claude-plugin', pluginName),
+          path.join(acquired.sourcePath, '.codex-plugin', pluginName),
+          path.join(acquired.sourcePath, '.opencode', pluginName),
         ];
 
         for (const candidate of candidatePaths) {
@@ -154,21 +158,34 @@ async function readPluginManifest(pluginDir: string): Promise<{
   version?: string;
   author?: string;
 }> {
-  const manifestPath = path.join(pluginDir, '.claude-plugin', 'plugin.json');
-  const manifest = await readJson<Record<string, unknown>>(manifestPath);
+  const candidatePaths = [
+    path.join(pluginDir, 'plugin.json'),
+    path.join(pluginDir, '.claude-plugin', 'plugin.json'),
+    path.join(pluginDir, '.codex-plugin', 'plugin.json'),
+    path.join(pluginDir, '.opencode', 'plugin.json'),
+    path.join(pluginDir, 'opencode.json'),
+    path.join(pluginDir, '.gemini', 'config', 'plugins', 'plugin.json'),
+    path.join(pluginDir, '.gemini', 'config', 'plugin.json'),
+    path.join(pluginDir, '.gemini', 'plugin.json'),
+    path.join(pluginDir, '.agents', 'plugin.json'),
+    path.join(pluginDir, 'package.json'),
+  ];
 
-  if (manifest) {
-    const authorValue = manifest.author;
-    const author = typeof authorValue === 'string'
-      ? authorValue
-      : (authorValue as Record<string, unknown> | undefined)?.name as string | undefined;
+  for (const manifestPath of candidatePaths) {
+    const manifest = await readJson<Record<string, unknown>>(manifestPath);
+    if (manifest && typeof manifest === 'object') {
+      const authorValue = manifest.author;
+      const author = typeof authorValue === 'string'
+        ? authorValue
+        : (authorValue as Record<string, unknown> | undefined)?.name as string | undefined;
 
-    return {
-      name: (manifest.name as string) || path.basename(pluginDir),
-      description: (manifest.description as string) || '',
-      ...(typeof manifest.version === 'string' ? { version: manifest.version } : {}),
-      ...(author !== undefined ? { author } : {}),
-    };
+      return {
+        name: (manifest.name as string) || path.basename(pluginDir),
+        description: (manifest.description as string) || '',
+        ...(typeof manifest.version === 'string' ? { version: manifest.version } : {}),
+        ...(author !== undefined ? { author } : {}),
+      };
+    }
   }
 
   return {

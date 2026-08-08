@@ -1,32 +1,46 @@
-# plugins — Cross-Agent Agent Plugins Manager
+# plugins — Cross-Agent Agent Plugins Manager & Web Dashboard
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-blue.svg)](https://www.typescriptlang.org/)
 
-**`plugins`** (formerly `agentpm`) is a cross-agent **Agent Plugins** manager and conversion engine — the reference implementation for the [Agent Plugins v1.0.0](https://agent-plugins.org) specification. It mirrors the [`skills` CLI](https://skills.sh) UX, but for portable Agent Plugins: discover, add, use, remove, list, find, update, init, and convert composite packages (skills, MCP servers, rules, hooks) across coding agents including Google Antigravity, Claude Code, OpenAI Codex CLI, OpenCode, and Pi.
+**`plugins`** (formerly `agentpm`) is a cross-agent **Agent Plugins** manager, conversion engine, and interactive web dashboard — the reference implementation for the [Agent Plugins v1.0.0](https://agent-plugins.org) specification. It mirrors the [`skills` CLI](https://skills.sh) UX, but for portable Agent Plugins: discover, add, use, remove, list, find, update, init, inspect, doctor, and convert composite packages (skills, MCP servers, rules, hooks, agents) across coding agents including Google Antigravity, Claude Code, OpenAI Codex CLI, and OpenCode AI.
 
 This repository is itself a conforming Agent Plugins v1 plugin (`plugin.json` + `skills/migrate-agent-plugin/`), dogfooding the portable format it manages.
 
 ---
 
-## Installation
+## Features & Capabilities
+
+- 🌐 **Interactive Web Dashboard**: Explore, inspect, convert, and manage plugins visually in a modern web UI.
+- 🔍 **Deep 9-Component Parser & IR**: Parses skills, commands, agents, rules, context files, hooks, MCP servers, output styles, and workflows into a normalized Intermediate Representation (IR).
+- 🔄 **Single Narrowing Seam Conversion**: Converts any client layout to/from the Portable Core (`PortableCoreIR`), targeting `agent-plugins`, `antigravity`, `claude-code`, `codex`, or `opencode`.
+- 📦 **Workspace & Global Store**: Manages cached global store repositories (`~/.agentplugins/plugins/`) and workspace materializations (`.agents/plugins/`).
+- 🩺 **Doctor Health Diagnostics**: Checks environment, target paths, and active plugins across all 4 client runtimes.
+- 📊 **Provider Capability Matrix**: Compares feature support across agent runtimes.
+
+---
+
+## Installation & Web Server
 
 ```bash
 # Global installation
 npm install -g agentpm
 
-# Or run directly with npx
+# Or run CLI directly with npx
 npx agentpm --help
+
+# Launch the Web Dashboard & Local API Server
+npm start
 ```
 
-The `plugins` binary is the canonical entry point; `agentpm` is kept as an alias.
+The `plugins` binary is the canonical entry point; `agentpm` is kept as a bin alias. When running `npm start` or `npm run dev`, the server starts on `http://localhost:3000` (or `PORT` environment variable).
 
 ---
 
 ## Command Reference
 
 ### `plugins add <package>`
-Downloads a plugin package into the Global Store (`$AGENTPM_STORE`, default `~/.local/share/agentpm/plugins/`), converts it to the **portable v1 format**, and enables it for your agents.
+Downloads a plugin package into the Global Store (`$AGENTPM_STORE`, default `~/.agentplugins/repos/`), converts it to the **portable v1 format** in `~/.agentplugins/plugins/`, and enables it for your workspace.
 
 ```bash
 # Install a standard GitHub repository
@@ -43,6 +57,35 @@ plugins add octocat/Hello-World --no-enable
 
 # Override the conversion target (portable v1 by default)
 plugins add octocat/Hello-World --target antigravity
+```
+
+### `plugins inspect <source>`
+Parses a plugin directory or repository and prints a summary of its 9 component types along with conversion warnings.
+
+```bash
+plugins inspect ./resource/codex/imagegen
+plugins inspect ./skills/migrate-agent-plugin --json
+```
+
+### `plugins convert <plugin>`
+Converts a plugin directory through the unified seam (parse → portable core → emit, ADR 0013). Bare `convert` emits the portable v1 core; native targets via `--target`.
+
+```bash
+plugins convert ./my-claude-plugin                 # portable v1 core (default)
+plugins convert ./my-claude-plugin --target opencode
+plugins convert ./my-claude-plugin --target antigravity
+plugins convert ./my-claude-plugin --target claude-code
+plugins convert ./my-claude-plugin --target codex
+plugins convert ./my-claude-plugin --out ./dist-plugin
+```
+
+Native targets: `opencode`, `antigravity`, `claude-code`, `codex`. Each emits its client's own plugin layout from the portable core.
+
+### `plugins doctor`
+Runs health checks and reports active plugin materializations across all supported client adapters.
+
+```bash
+plugins doctor
 ```
 
 ### `plugins use <package>`
@@ -105,19 +148,13 @@ plugins disable pdf-viewer
 plugins info pdf-viewer
 ```
 
-### `plugins convert <plugin>`
-Converts a plugin directory through the unified seam (parse → portable core → emit, ADR 0013). Bare `convert` emits the portable v1 core; native targets via `--target`.
+### `plugins docs [provider]` / `plugins providers`
+Displays provider capability documentation and inspects provider directories on disk.
 
 ```bash
-plugins convert ./my-claude-plugin                 # portable v1 core (default)
-plugins convert ./my-claude-plugin --target opencode
-plugins convert ./my-claude-plugin --target claude-code
-plugins convert ./my-claude-plugin --target codex
-plugins convert ./my-claude-plugin --out ./dist-plugin
+plugins docs --matrix
+plugins providers -p antigravity
 ```
-
-Native targets: `opencode`, `antigravity`, `claude-code`, `codex`. Each emits its
-client's own plugin layout from the portable core (see ADR 0013).
 
 ---
 
@@ -129,29 +166,42 @@ Conversion and `add` default to the **Agent Plugins v1** target, which emits:
 - `mcp.json` — portable MCP configuration (`$schema` + `mcpServers` with explicit `stdio` / `streamable-http` / `sse` transports).
 - `skills/<name>/SKILL.md` — skills are the portable unit.
 
-Vendor-specific hooks, commands, agents, LSP, and marketplace metadata are **not** portable v1 components; the `migrate-agent-plugin` skill (in `skills/`) documents keeping them as client compatibility layers.
+Vendor-specific hooks, commands, agents, LSP, and marketplace metadata are preserved under `client-adapters/<client>/` as client compatibility layers.
 
 ---
 
 ## Architecture
 
-- **`PackageManifest` (`src/core/manifest.ts`)** — manifest parsing, capability detection (skills, rules, MCP, hooks), format validation.
-- **`MaterializationEngine` (`src/core/materialization.ts`)** — derives a native layout from the portable core via the per-agent emitter (passthrough for deferred agents), then symlinks or copies; safe dematerialization.
-- **`acquirer.ts`** — single git acquisition surface: security checks, APM-shaped `apm.lock.yaml`, content hashing, fetch cache.
-- **`v1-manifest.ts`** — closed-schema `plugin.json` + portable `mcp.json` builders (the Agent Plugins v1 target).
-- **`portable-writer.ts`** — emits the portable v1 core and preserves the source client under `client-adapters/<client>/`.
-- **`config.ts`** — injectable store/cache roots (`AGENTPM_STORE` / `AGENTPM_CACHE`, XDG defaults).
-- **`GlobalStore` (`src/core/store.ts`)** — store of validated portable-core packages (`$AGENTPM_STORE/plugins/`) and adapted cache (`$AGENTPM_STORE/adapted/`).
-- **`src/adapters/`** — one merged module per agent (lifecycle + `convert(portableCore)` emitter). Day-one emitters: `opencode`, `antigravity`; `claude-code`/`codex` deferred.
+- **Deep Parser (`src/parser/`)**: Discovers skills, commands, agents, rules, context files, hooks, MCP servers, output styles, and workflows.
+- **Single Seam IR (`src/ir/to-portable-core.ts`)**: Narrows the 9-component IR down to `PortableCoreIR` (skills + MCP + client extensions).
+- **Client Adapters (`src/adapters/`)**: Native emitters & lifecycle managers for `antigravity`, `claude-code`, `codex`, and `opencode`.
+- **Materialization Engine (`src/core/materialization.ts`)**: Handles workspace symlink/copy materialization and precedence rules.
+- **Acquirer (`src/core/acquirer.ts`)**: Secure Git package acquisition, lockfiles (`apm.lock.yaml`), and content hash verification.
+- **Portable Writer (`src/core/portable-writer.ts`)**: Emits closed-schema `plugin.json` and portable `mcp.json`.
+- **Global Store (`src/core/store.ts`)**: Manages the multi-tier store in `~/.agentplugins/`.
+- **Web Server & Dashboard (`server.ts`)**: Express-based REST API and responsive single-page Web Dashboard.
 
-## Development
+---
+
+## Development & Testing
 
 ```bash
 npm install
-npm run build
-npm test
+npm run build     # Compiles TypeScript
+npm test          # Runs node:test suite (55 tests)
 ```
+
+Validate `plugin.json` against the canonical schema:
+
+```bash
+npx ajv-cli validate --spec=draft2020 \
+  -s schemas/1.0.0/plugin.schema.json \
+  -d plugin.json
+```
+
+---
 
 ## License
 
 MIT License © 2026 Rayhan Islam Shuvro (`shuvrobhai`)
+

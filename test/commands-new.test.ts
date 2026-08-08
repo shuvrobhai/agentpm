@@ -7,6 +7,9 @@ import { initCommand } from '../src/commands/init.js';
 import { useCommand } from '../src/commands/use.js';
 import { installCommand, DEFAULT_INSTALL_TARGET } from '../src/commands/install.js';
 import { GlobalStore } from '../src/core/store.js';
+import { isolateAgentStore } from './helpers.js';
+
+isolateAgentStore();
 
 describe('plugins CLI commands', () => {
   test('initCommand scaffolds a valid portable plugin', async () => {

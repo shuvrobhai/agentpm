@@ -265,44 +265,147 @@ export class GlobalStore {
   static async removePlugin(pluginIdentifier: string): Promise<string[]> {
     const removedPaths: string[] = [];
 
-    if (pluginIdentifier.includes('/')) {
-      const targetPath = await this.findPluginPath(pluginIdentifier);
-      const parentDir = path.dirname(targetPath);
-      await fs.rm(parentDir, { recursive: true, force: true });
-      removedPaths.push(parentDir);
-    } else {
-      const storePath = this.getStorePath();
-      const topEntries = await fs.readdir(storePath).catch(() => []);
-      for (const top of topEntries) {
-        if (top.startsWith('.')) continue;
-        const topPath = path.join(storePath, top);
-        const statTop = await fs.stat(topPath).catch(() => null);
-        if (!statTop || !statTop.isDirectory()) continue;
+    const [namespace, pluginName] = this.splitIdentifier(pluginIdentifier);
 
-        const candidatePath = path.join(topPath, pluginIdentifier);
-        const exists = await fs.access(candidatePath).then(() => true).catch(() => false);
-        if (exists) {
-          await fs.rm(candidatePath, { recursive: true, force: true });
-          removedPaths.push(candidatePath);
+    // Purge every store tier: portable packages (plugins/), pristine clones
+    // (repos/), and adapted materializations (adapted/<adapter>/...).
+    await this.removeTierMatches(this.getStorePath(), namespace, pluginName, removedPaths);
+    await this.removeTierMatches(this.getReposPath(), namespace, pluginName, removedPaths);
+    await this.removeTierMatches(this.getAdaptedStorePath(), namespace, pluginName, removedPaths);
+
+    // Drop now-empty namespace dirs (e.g. plugins/mattpocock) even when the
+    // plugin subdir was already gone before this remove call.
+    if (namespace) {
+      const tierRoots = [this.getStorePath(), this.getReposPath(), this.getAdaptedStorePath()];
+      for (const root of tierRoots) {
+        const candidates = [path.join(root, namespace)];
+        const topEntries = await fs.readdir(root).catch(() => []);
+        for (const top of topEntries) {
+          if (top.startsWith('.')) continue;
+          candidates.push(path.join(root, top, namespace));
         }
-
-        const subEntries = await fs.readdir(topPath).catch(() => []);
-        for (const sub of subEntries) {
-          const subCandidate = path.join(topPath, sub, pluginIdentifier);
-          const subExists = await fs.access(subCandidate).then(() => true).catch(() => false);
-          if (subExists) {
-            await fs.rm(subCandidate, { recursive: true, force: true });
-            removedPaths.push(subCandidate);
+        for (const candidate of candidates) {
+          if (await this.isDirEmpty(candidate)) {
+            await fs.rmdir(candidate).catch(() => {});
+            removedPaths.push(candidate);
           }
         }
       }
     }
 
-    if (removedPaths.length === 0) {
+    const registryChanged = await this.removeRegistryEntry(namespace, pluginName);
+
+    if (removedPaths.length === 0 && !registryChanged) {
       throw new Error(`Plugin "${pluginIdentifier}" not found in global store.`);
     }
 
+    // Clean up now-empty ancestor dirs (e.g. plugins/mattpocock).
+    await this.pruneEmptyParents(
+      removedPaths,
+      [this.getStorePath(), this.getReposPath(), this.getAdaptedStorePath()],
+    );
+
     return removedPaths;
+  }
+
+  private static splitIdentifier(pluginIdentifier: string): [string | undefined, string] {
+    const parts = pluginIdentifier.split('/');
+    if (parts.length >= 2 && parts[0] && parts[1]) {
+      return [parts[0] as string, parts[1] as string];
+    }
+    return [undefined, pluginIdentifier];
+  }
+
+  /**
+   * Removes matching plugin dirs under a store tier root. With a namespace this
+   * covers both the direct layout (plugins/<ns>/<plugin>) and vendor-tiered
+   * layouts (plugins/<vendor>/<ns>/<plugin>). Without one it scans every
+   * namespace like the legacy bare-name search.
+   */
+  private static async removeTierMatches(
+    root: string,
+    namespace: string | undefined,
+    pluginName: string,
+    removed: string[],
+  ): Promise<void> {
+    const rmPath = async (p: string): Promise<void> => {
+      const exists = await fs.access(p).then(() => true).catch(() => false);
+      if (!exists) return;
+      await fs.rm(p, { recursive: true, force: true });
+      removed.push(p);
+    };
+
+    if (namespace) {
+      await rmPath(path.join(root, namespace, pluginName));
+      const topEntries = await fs.readdir(root).catch(() => []);
+      for (const top of topEntries) {
+        if (top.startsWith('.')) continue;
+        await rmPath(path.join(root, top, namespace, pluginName));
+      }
+      return;
+    }
+
+    const topEntries = await fs.readdir(root).catch(() => []);
+    for (const top of topEntries) {
+      if (top.startsWith('.')) continue;
+      const topPath = path.join(root, top);
+      const statTop = await fs.stat(topPath).catch(() => null);
+      if (!statTop || !statTop.isDirectory()) continue;
+
+      await rmPath(path.join(topPath, pluginName));
+
+      const subEntries = await fs.readdir(topPath).catch(() => []);
+      for (const sub of subEntries) {
+        if (sub.startsWith('.')) continue;
+        await rmPath(path.join(topPath, sub, pluginName));
+      }
+    }
+  }
+
+  private static async removeRegistryEntry(
+    namespace: string | undefined,
+    pluginName: string,
+  ): Promise<boolean> {
+    const registry = await this.readRegistry();
+    let changed = false;
+
+    for (const key of Object.keys(registry.packages)) {
+      const matches = namespace
+        ? key === `${namespace}/${pluginName}`
+        : key === pluginName || key.endsWith(`/${pluginName}`);
+      if (matches) {
+        delete registry.packages[key];
+        changed = true;
+      }
+    }
+
+    if (!changed) return false;
+
+    const regPath = agentpmRegistryPath();
+    await fs.mkdir(path.dirname(regPath), { recursive: true });
+    await fs.writeFile(regPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
+    return true;
+  }
+
+  private static async isDirEmpty(p: string): Promise<boolean> {
+    const entries = await fs.readdir(p).catch(() => null);
+    return entries !== null && entries.length === 0;
+  }
+
+  /** Removes empty ancestor dirs of the removed paths up to (not including) roots. */
+  private static async pruneEmptyParents(paths: string[], roots: string[]): Promise<void> {
+    const rootResolved = new Set(roots.map(r => path.resolve(r)));
+    for (const removed of paths) {
+      let current = path.dirname(removed);
+      while (current && path.dirname(current) !== current) {
+        if (path.basename(current).startsWith('.')) break;
+        if (rootResolved.has(path.resolve(current))) break;
+        const entries = await fs.readdir(current).catch(() => null);
+        if (entries === null || entries.length > 0) break;
+        await fs.rmdir(current).catch(() => {});
+        current = path.dirname(current);
+      }
+    }
   }
 
   static validatePathComponent(component: string, name: string): void {

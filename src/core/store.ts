@@ -1,6 +1,6 @@
 import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs/promises';
+import { agentpmStorePluginsDir, agentpmStoreAdaptedDir } from './config.js';
 
 export interface ParsedRepo {
   namespace: string;
@@ -21,11 +21,11 @@ const SAFE_PATH_COMPONENT = /^[a-zA-Z0-9_.-]+$/;
 
 export class GlobalStore {
   static getStorePath(): string {
-    return path.join(os.homedir(), '.agentplugins', 'plugins');
+    return agentpmStorePluginsDir();
   }
 
   static getAdaptedStorePath(): string {
-    return path.join(os.homedir(), '.agentplugins', 'adapted');
+    return agentpmStoreAdaptedDir();
   }
 
   static getAdaptedPluginPath(adapterName: string, namespace: string, pluginName: string, version: string): string {

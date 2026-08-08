@@ -50,6 +50,34 @@ function sanitizeAuthor(author: unknown): PluginAuthor | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * Native manifest metadata shared by per-agent emitters. Derives identity
+ * fields (name, version, description, author, homepage, repository, license,
+ * keywords) from the plugin IR metadata bag, mirroring how the portable writer
+ * builds its closed-schema plugin.json — minus the portable-only keys.
+ */
+export function buildNativeManifestMetadata(
+  metadata: Record<string, unknown>,
+  fallbackName: string
+): Record<string, unknown> {
+  const name = sanitizePluginName(String(metadata.name ?? ''), fallbackName);
+  const manifest: Record<string, unknown> = { name };
+
+  for (const key of ['version', 'description', 'homepage', 'repository', 'license'] as const) {
+    const value = metadata[key];
+    if (typeof value === 'string' && value.trim() !== '') manifest[key] = value;
+  }
+
+  if (metadata.author && typeof metadata.author === 'object' && !Array.isArray(metadata.author)) {
+    manifest.author = metadata.author;
+  }
+  if (Array.isArray(metadata.keywords)) {
+    manifest.keywords = metadata.keywords.filter((k): k is string => typeof k === 'string');
+  }
+
+  return manifest;
+}
+
 export function buildPortablePluginManifest(
   source: Record<string, unknown>,
   fallbackName: string

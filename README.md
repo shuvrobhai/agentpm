@@ -26,7 +26,7 @@ The `plugins` binary is the canonical entry point; `agentpm` is kept as an alias
 ## Command Reference
 
 ### `plugins add <package>`
-Downloads a plugin package into the central Global Store (`~/.agentplugins/plugins/`), converts it to the **portable v1 format**, and enables it for your agents.
+Downloads a plugin package into the Global Store (`$AGENTPM_STORE`, default `~/.local/share/agentpm/plugins/`), converts it to the **portable v1 format**, and enables it for your agents.
 
 ```bash
 # Install a standard GitHub repository
@@ -106,12 +106,18 @@ plugins info pdf-viewer
 ```
 
 ### `plugins convert <plugin>`
-Converts vendor-specific plugin directories to target agent-agnostic schemas.
+Converts a plugin directory through the unified seam (parse → portable core → emit, ADR 0013). Bare `convert` emits the portable v1 core; native targets via `--target`.
 
 ```bash
-plugins convert ./my-claude-plugin --target agent-plugins
-plugins convert ./my-plugin --memory AGENTS.md --out ./dist-plugin
+plugins convert ./my-claude-plugin                 # portable v1 core (default)
+plugins convert ./my-claude-plugin --target opencode
+plugins convert ./my-claude-plugin --target claude-code
+plugins convert ./my-claude-plugin --target codex
+plugins convert ./my-claude-plugin --out ./dist-plugin
 ```
+
+Native targets: `opencode`, `antigravity`, `claude-code`, `codex`. Each emits its
+client's own plugin layout from the portable core (see ADR 0013).
 
 ---
 
@@ -130,10 +136,13 @@ Vendor-specific hooks, commands, agents, LSP, and marketplace metadata are **not
 ## Architecture
 
 - **`PackageManifest` (`src/core/manifest.ts`)** — manifest parsing, capability detection (skills, rules, MCP, hooks), format validation.
-- **`MaterializationEngine` (`src/core/materialization.ts`)** — symlink creation, version segment stripping, `--copy` mode, safe dematerialization.
-- **`PluginConverter` (`src/core/converter.ts`)** + **`hook-converter.ts`** — pipeline executing variable rewriting, memory transpilation, MCP path expansion, and hook schema translation.
+- **`MaterializationEngine` (`src/core/materialization.ts`)** — derives a native layout from the portable core via the per-agent emitter (passthrough for deferred agents), then symlinks or copies; safe dematerialization.
+- **`acquirer.ts`** — single git acquisition surface: security checks, APM-shaped `apm.lock.yaml`, content hashing, fetch cache.
 - **`v1-manifest.ts`** — closed-schema `plugin.json` + portable `mcp.json` builders (the Agent Plugins v1 target).
-- **`GlobalStore` (`src/core/store.ts`)** — central storage (`~/.agentplugins/plugins/`) and adapted cache (`~/.agentplugins/adapted/`).
+- **`portable-writer.ts`** — emits the portable v1 core and preserves the source client under `client-adapters/<client>/`.
+- **`config.ts`** — injectable store/cache roots (`AGENTPM_STORE` / `AGENTPM_CACHE`, XDG defaults).
+- **`GlobalStore` (`src/core/store.ts`)** — store of validated portable-core packages (`$AGENTPM_STORE/plugins/`) and adapted cache (`$AGENTPM_STORE/adapted/`).
+- **`src/adapters/`** — one merged module per agent (lifecycle + `convert(portableCore)` emitter). Day-one emitters: `opencode`, `antigravity`; `claude-code`/`codex` deferred.
 
 ## Development
 

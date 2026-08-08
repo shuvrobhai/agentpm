@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { simpleGit } from 'simple-git';
 import { GlobalStore } from '../core/store.js';
+import { cloneRepo } from '../core/acquirer.js';
 
 export interface UseOptions {
   skill?: string;
@@ -27,21 +27,8 @@ async function resolvePluginDir(identifier: string): Promise<{ dir: string; clea
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'plugins-use-'));
   const cloneDir = path.join(tempDir, 'repo');
   try {
-    const git = simpleGit();
-    const options = ['--depth', '1'];
-    if (parsed.ref && parsed.ref !== 'latest') {
-      options.push('--branch', parsed.ref);
-    }
-    await git.clone(parsed.cloneUrl, cloneDir, options);
-
-    let dir = cloneDir;
-    if (parsed.subfolder) {
-      const sub = path.join(cloneDir, parsed.subfolder);
-      if (await fs.access(sub).then(() => true).catch(() => false)) {
-        dir = sub;
-      }
-    }
-    return { dir, cleanup: async () => { await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {}); } };
+    const acquired = await cloneRepo(parsed, cloneDir);
+    return { dir: acquired.pluginDir, cleanup: async () => { await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {}); } };
   } catch (err) {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     throw err;

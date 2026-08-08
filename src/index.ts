@@ -13,6 +13,9 @@ import { findCommand } from './commands/find.js';
 import { updateCommand } from './commands/update.js';
 import { initCommand } from './commands/init.js';
 import { convertCommand } from './commands/convert.js';
+import { inspectCommand } from './commands/inspect.js';
+import { docsCommand } from './commands/docs.js';
+import { providersCommand } from './commands/providers.js';
 
 const program = new Command();
 
@@ -117,13 +120,35 @@ program
 
 program
   .command('convert')
-  .description('Convert vendor-specific plugin files to target agent-agnostic specs')
+  .description('Convert a plugin to the portable Agent Plugins v1 core (default) or a native target')
   .argument('<plugin>', 'Plugin directory path or installed plugin identifier')
-  .option('-t, --target <agent>', 'Target agent adapter (e.g., antigravity, claude-code, agent-plugins)', 'antigravity')
+  .option('-t, --target <agent>', 'Native target adapter (e.g., opencode, antigravity; default emits portable v1 core)', 'agent-plugins')
   .option('-m, --memory <filename>', 'Memory filename (AGENTS.md or CLAUDE.md)', 'AGENTS.md')
   .option('-v, --var-prefix <prefix>', 'Root variable placeholder prefix', 'PLUGIN_ROOT')
   .option('-o, --out <dir>', 'Output destination directory')
   .action(convertCommand);
+
+program
+  .command('inspect')
+  .description('Deep-parse a plugin into its IR and print a component summary')
+  .argument('<source>', 'Plugin source (local path, git URL, GitHub shorthand, or marketplace ref)')
+  .option('--json', 'Output the full parsed IR as JSON')
+  .action(inspectCommand);
+
+program
+  .command('docs')
+  .description('Inspect provider capability specs and official documentation')
+  .argument('[provider]', 'Provider name (antigravity, opencode, claude, codex)')
+  .option('-m, --matrix', 'Display side-by-side provider capability matrix')
+  .option('-j, --json', 'Output raw JSON specification')
+  .action(docsCommand);
+
+program
+  .command('providers')
+  .alias('inspect-disk')
+  .description('Inspect target provider directories on disk to list active plugins')
+  .option('-p, --provider <name>', 'Filter by provider (antigravity, opencode, claude, codex)')
+  .action(providersCommand);
 
 program.addHelpText('after', `
 Examples:
@@ -139,6 +164,9 @@ Examples:
   $ plugins disable pdf-viewer
   $ plugins info pdf-viewer
   $ plugins convert ./my-claude-plugin --target agent-plugins
+  $ plugins inspect ./my-claude-plugin
+  $ plugins docs --matrix
+  $ plugins providers
 `);
 
 program.parse(process.argv);

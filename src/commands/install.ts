@@ -1,6 +1,6 @@
 import { GlobalStore } from '../core/store.js';
 import { downloadPlugin } from '../core/fetcher.js';
-import { PluginConverter } from '../core/converter.js';
+import { convertDirToPortableCore } from '../core/portable-writer.js';
 
 export interface InstallOptions {
   target?: string;
@@ -22,13 +22,7 @@ export async function installCommand(repo: string, options: InstallOptions = {})
       console.log(`Use '--force' to redownload.`);
     } else {
       console.log(`Converting downloaded plugin to portable format (target: ${targetAdapter})...`);
-      await PluginConverter.convertPlugin(result.targetPath, result.targetPath, {
-        targetAdapter,
-        memoryFilename: 'AGENTS.md',
-        rootVarName: 'PLUGIN_ROOT',
-        expandMcpPaths: true,
-        neutralizeTerms: true,
-      });
+      await convertDirToPortableCore(result.targetPath, result.targetPath);
 
       console.log(`Successfully installed ${result.namespace}/${result.pluginName}@${result.version}:`);
       console.log(`  ${result.targetPath}`);

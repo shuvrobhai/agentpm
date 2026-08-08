@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import { GlobalStore } from '../src/core/store.js';
+import { agentpmStoreRoot, agentpmCacheRoot, agentpmFetchCacheDir } from '../src/core/config.js';
 
 describe('GlobalStore Unit Tests', () => {
   test('validatePathComponent accepts safe strings', () => {
@@ -58,18 +59,36 @@ describe('GlobalStore Unit Tests', () => {
     assert.equal(parsed.pluginName, 'Hello-World');
   });
 
-  test('listGlobalPlugins discovers mock plugins', async () => {
-    const storePath = GlobalStore.getStorePath();
-    const mockPluginDir = path.join(storePath, 'test-owner', 'test-plugin', 'v1.0.0');
-    await fs.mkdir(mockPluginDir, { recursive: true });
+  test('listGlobalPlugins discovers mock plugins in an injectable temp store', async () => {
+    const tempStore = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-store-test-'));
+    const prevStore = process.env.AGENTPM_STORE;
+    const prevCache = process.env.AGENTPM_CACHE;
+    process.env.AGENTPM_STORE = path.join(tempStore, 'data');
+    process.env.AGENTPM_CACHE = path.join(tempStore, 'cache');
 
     try {
+      assert.ok(agentpmStoreRoot().startsWith(tempStore));
+      assert.ok(agentpmCacheRoot().startsWith(tempStore));
+
+      const storePath = GlobalStore.getStorePath();
+      const mockPluginDir = path.join(storePath, 'test-owner', 'test-plugin', 'v1.0.0');
+      await fs.mkdir(mockPluginDir, { recursive: true });
+
       const plugins = await GlobalStore.listGlobalPlugins();
       const found = plugins.find(p => p.namespace === 'test-owner' && p.pluginName === 'test-plugin');
       assert.ok(found, 'Should find mock plugin in global store');
       assert.equal(found?.version, 'v1.0.0');
+
+      const cacheDir = agentpmFetchCacheDir();
+      assert.ok(cacheDir.startsWith(tempStore));
+      await fs.mkdir(cacheDir, { recursive: true });
+      await fs.access(cacheDir);
     } finally {
-      await fs.rm(path.join(storePath, 'test-owner'), { recursive: true, force: true });
+      if (prevStore === undefined) delete process.env.AGENTPM_STORE;
+      else process.env.AGENTPM_STORE = prevStore;
+      if (prevCache === undefined) delete process.env.AGENTPM_CACHE;
+      else process.env.AGENTPM_CACHE = prevCache;
+      await fs.rm(tempStore, { recursive: true, force: true });
     }
   });
 });

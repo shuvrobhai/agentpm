@@ -1,8 +1,8 @@
-import { simpleGit } from 'simple-git';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import { GlobalStore } from './store.js';
+import { agentpmFetchCacheDir } from './config.js';
+import { cloneRepo, writeApmLockfile, APM_LOCKFILE } from './acquirer.js';
 import type { ParsedRepo } from './store.js';
 
 export interface DownloadResult {
@@ -11,9 +11,8 @@ export interface DownloadResult {
   pluginName: string;
   version: string;
   alreadyExisted: boolean;
+  commit?: string;
 }
-
-const COMMIT_SHA_REGEX = /^[0-9a-fA-F]{40}$/;
 
 export async function downloadPlugin(parsed: ParsedRepo, force = false): Promise<DownloadResult> {
   if (parsed.ref && parsed.ref.startsWith('-')) {
@@ -39,46 +38,39 @@ export async function downloadPlugin(parsed: ParsedRepo, force = false): Promise
     await fs.rm(targetPath, { recursive: true, force: true });
   }
 
-  await GlobalStore.ensureDir(path.dirname(targetPath));
+  const cacheKey = `${parsed.namespace}-${parsed.pluginName}-${version}`;
+  const fetchCacheDir = path.join(agentpmFetchCacheDir(), cacheKey);
 
-  const git = simpleGit();
-  const isCommitSha = parsed.ref ? COMMIT_SHA_REGEX.test(parsed.ref) : false;
-
-  const options = ['--depth', '1'];
-  if (parsed.ref && parsed.ref !== 'latest' && !isCommitSha) {
-    options.push('--branch', parsed.ref);
+  let cacheReady = false;
+  if (!force) {
+    const cacheMarker = path.join(fetchCacheDir, '.complete');
+    cacheReady = await fs.access(cacheMarker).then(() => true).catch(() => false);
   }
 
-  if (parsed.subfolder) {
-    // Monorepo subfolder download strategy: clone to temp directory, extract subfolder
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-clone-'));
-    try {
-      await git.clone(parsed.cloneUrl, tempDir, isCommitSha ? [] : options);
-      if (isCommitSha && parsed.ref) {
-        const repoGit = simpleGit(tempDir);
-        await repoGit.checkout(parsed.ref);
-      }
-
-      const extractedPath = path.join(tempDir, parsed.subfolder);
-      const subfolderExists = await fs.access(extractedPath).then(() => true).catch(() => false);
-
-      if (!subfolderExists) {
-        throw new Error(`Subfolder "${parsed.subfolder}" not found in repository ${parsed.cloneUrl} at ref ${version}`);
-      }
-
-      await GlobalStore.copyDirectoryDereferenced(extractedPath, targetPath);
-    } finally {
-      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-    }
+  let cloneDir = fetchCacheDir;
+  if (cacheReady) {
+    cloneDir = path.join(fetchCacheDir, 'repo');
   } else {
-    await git.clone(parsed.cloneUrl, targetPath, isCommitSha ? [] : options);
-    if (isCommitSha && parsed.ref) {
-      const repoGit = simpleGit(targetPath);
-      await repoGit.checkout(parsed.ref);
-    }
+    await fs.rm(fetchCacheDir, { recursive: true, force: true }).catch(() => {});
+    const repoDir = path.join(fetchCacheDir, 'repo');
+    const acquired = await cloneRepo(parsed, repoDir);
+    cloneDir = acquired.pluginDir;
+    await fs.writeFile(path.join(fetchCacheDir, '.complete'), acquired.commit, 'utf8');
+  }
 
-    const internalGitDir = path.join(targetPath, '.git');
-    await fs.rm(internalGitDir, { recursive: true, force: true }).catch(() => {});
+  await GlobalStore.copyDirectoryDereferenced(cloneDir, targetPath);
+
+  try {
+    await writeApmLockfile(
+      path.join(targetPath, APM_LOCKFILE),
+      parsed.pluginName,
+      parsed.cloneUrl,
+      parsed.ref,
+      await fs.readFile(path.join(fetchCacheDir, '.complete'), 'utf8'),
+      targetPath,
+    );
+  } catch {
+    // Lockfile is best-effort; a failed write must not fail the install.
   }
 
   return {

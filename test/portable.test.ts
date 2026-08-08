@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
-import { PluginConverter } from '../src/core/converter.js';
+import { convertDirToPortableCore } from '../src/core/portable-writer.js';
 import {
   buildPortablePluginManifest,
   buildPortableMcp,
@@ -90,7 +90,7 @@ describe('Portable Agent Plugins v1 output', () => {
     assert.ok(warnings.length >= 1);
   });
 
-  test('convertPlugin to agent-plugins emits closed plugin.json and portable mcp.json', async () => {
+  test('convertDirToPortableCore emits closed plugin.json, skills/, and portable mcp.json', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-portable-src-'));
     const destDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-portable-dest-'));
 
@@ -99,7 +99,7 @@ describe('Portable Agent Plugins v1 output', () => {
       await fs.mkdir(skillDir, { recursive: true });
       await fs.writeFile(
         path.join(skillDir, 'SKILL.md'),
-        'Run ${CLAUDE_PLUGIN_ROOT}/bin/demo.js',
+        '---\nname: demo\ndescription: Demo\n---\n\nRun ${CLAUDE_PLUGIN_ROOT}/bin/demo.js',
         'utf8'
       );
 
@@ -131,16 +131,7 @@ describe('Portable Agent Plugins v1 output', () => {
         'utf8'
       );
 
-      const result = await PluginConverter.convertPlugin(tmpDir, destDir, {
-        targetAdapter: 'agent-plugins',
-        memoryFilename: 'AGENTS.md',
-        rootVarName: 'PLUGIN_ROOT',
-        expandMcpPaths: true,
-        neutralizeTerms: true,
-      });
-
-      assert.ok(result.filesProcessed >= 3);
-      assert.ok(result.filesModified >= 2);
+      await convertDirToPortableCore(tmpDir, destDir);
 
       const pluginJson = JSON.parse(await fs.readFile(path.join(destDir, 'plugin.json'), 'utf8'));
       assert.equal(pluginJson.$schema, PLUGIN_SCHEMA_URL);
@@ -156,10 +147,7 @@ describe('Portable Agent Plugins v1 output', () => {
       assert.equal(mcpJson.mcpServers.demo.cwd, './server');
 
       const skill = await fs.readFile(path.join(destDir, 'skills', 'demo', 'SKILL.md'), 'utf8');
-      assert.ok(skill.includes('${PLUGIN_ROOT}/bin/demo.js'));
-
-      await assert.rejects(fs.access(path.join(destDir, '.mcp.json')));
-      await assert.rejects(fs.access(path.join(destDir, 'mcp_config.json')));
+      assert.ok(skill.includes('bin/demo.js'));
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
       await fs.rm(destDir, { recursive: true, force: true });

@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { GlobalStore } from './store.js';
-import { PluginConverter } from './converter.js';
-import type { ConversionOptions } from './converter.js';
+import { parsePlugin } from '../parser/index.js';
+import { toPortableCore } from '../ir/to-portable-core.js';
+import { getAdapter } from '../adapters/index.js';
 
 export interface MaterializationOptions {
   adapterName: string;
@@ -12,7 +13,6 @@ export interface MaterializationOptions {
   scope: 'global' | 'local';
   targetBaseDir: string;
   copy?: boolean | undefined;
-  conversionOptions?: ConversionOptions | undefined;
 }
 
 export interface MaterializationResult {
@@ -50,17 +50,9 @@ export class MaterializationEngine {
       version
     );
 
-    const conversionOpts: ConversionOptions = options.conversionOptions || {
-      targetAdapter: options.adapterName,
-      memoryFilename: 'AGENTS.md',
-      rootVarName: 'PLUGIN_ROOT',
-      expandMcpPaths: true,
-      neutralizeTerms: true,
-    };
+    const adaptedFilesCount = await this.adaptToNative(rawSourcePath, adaptedDir, options.adapterName);
 
-    const conversionResult = await PluginConverter.convertPlugin(rawSourcePath, adaptedDir, conversionOpts);
-
-    const targetSourcePath = options.sourcePath || (conversionResult.filesModified > 0 ? adaptedDir : rawSourcePath);
+    const targetSourcePath = options.sourcePath || (adaptedFilesCount > 0 ? adaptedDir : rawSourcePath);
     const linkPath = path.join(options.targetBaseDir, pluginDirName);
 
     if (path.resolve(targetSourcePath) === path.resolve(linkPath)) {
@@ -70,7 +62,7 @@ export class MaterializationEngine {
         materializedPath: linkPath,
         sourcePath: targetSourcePath,
         isCopy: false,
-        adaptedFilesCount: conversionResult.filesModified,
+        adaptedFilesCount,
       };
     }
 
@@ -90,8 +82,32 @@ export class MaterializationEngine {
       materializedPath: linkPath,
       sourcePath: targetSourcePath,
       isCopy: !!options.copy,
-      adaptedFilesCount: conversionResult.filesModified,
+      adaptedFilesCount,
     };
+  }
+
+  /**
+   * Derive a native layout from the portable core (ADR 0013 Q8/Q11). Parses the
+   * stored package, narrows to PortableCoreIR, and runs the per-agent emitter.
+   */
+  private static async adaptToNative(
+    sourceDir: string,
+    adaptedDir: string,
+    adapterName: string,
+  ): Promise<number> {
+    const adapter = getAdapter(adapterName);
+
+    const ir = await parsePlugin(sourceDir);
+    const result = adapter.convert(toPortableCore(ir), 'workspace');
+
+    await fs.mkdir(adaptedDir, { recursive: true });
+    for (const file of result.files) {
+      const filePath = path.join(adaptedDir, file.relativePath);
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, file.content, 'utf-8');
+    }
+
+    return result.files.length;
   }
 
   static async dematerialize(options: DematerializationOptions): Promise<string[]> {

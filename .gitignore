@@ -4,3 +4,5 @@ dist/
 .claudecode/
 .agents/*
 !.agents/handoff
+.claude/
+skills-lock.json

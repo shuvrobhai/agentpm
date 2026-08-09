@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { readJson } from '../utils/fs.js';
+import fs from 'node:fs/promises';
+import { readJson, readFile, exists, listFilesByExtension } from '../utils/fs.js';
 import { resolveSource } from './source-resolver.js';
 import { parseSkills } from './skill-parser.js';
 import { parseCommands } from './command-parser.js';
@@ -7,9 +8,46 @@ import { parseAgents } from './agent-parser.js';
 import { parseRules, parseContextFile } from './rules-parser.js';
 import { parseHooks } from './hooks-parser.js';
 import { parseMCPServers } from './mcp-parser.js';
-import { parseOutputStyles } from './output-style-parser.js';
-import { parseWorkflows } from './workflow-parser.js';
-import type { PluginIR } from '../ir/types.js';
+import type { PluginIR, OutputStyleIR, WorkflowIR } from '../ir/types.js';
+
+// ponytail: inlined lightweight scanner for output-styles
+export async function parseOutputStyles(pluginDir: string): Promise<OutputStyleIR[]> {
+  const stylesDir = path.join(pluginDir, 'output-styles');
+  if (!await exists(stylesDir)) return [];
+  const mdFiles = await listFilesByExtension(stylesDir, '.md');
+  const styles: OutputStyleIR[] = [];
+  for (const file of mdFiles) {
+    const filePath = path.join(stylesDir, file);
+    const raw = await readFile(filePath);
+    if (raw) {
+      styles.push({ name: path.basename(file, '.md'), content: raw, sourcePath: filePath });
+    }
+  }
+  return styles;
+}
+
+// ponytail: inlined lightweight scanner for workflows
+export async function parseWorkflows(pluginDir: string): Promise<WorkflowIR[]> {
+  const workflowsDir = path.join(pluginDir, 'workflows');
+  if (!await exists(workflowsDir)) return [];
+  let entries: string[];
+  try {
+    entries = await fs.readdir(workflowsDir);
+  } catch {
+    return [];
+  }
+  const workflows: WorkflowIR[] = [];
+  for (const file of entries) {
+    const ext = path.extname(file);
+    if (!['.js', '.ts', '.mjs'].includes(ext)) continue;
+    const filePath = path.join(workflowsDir, file);
+    const raw = await readFile(filePath);
+    if (raw) {
+      workflows.push({ name: path.basename(file, ext), content: raw, extension: ext, sourcePath: filePath });
+    }
+  }
+  return workflows;
+}
 
 export async function parsePlugin(input: string): Promise<PluginIR> {
   console.log('\n[1/2] Resolving source...');

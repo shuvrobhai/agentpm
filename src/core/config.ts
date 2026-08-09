@@ -38,3 +38,32 @@ export function agentpmFetchCacheDir(): string {
   return path.join(agentpmCacheRoot(), 'fetch');
 }
 
+import fs from 'node:fs';
+
+export function findWorkspaceRoot(startDir: string = process.cwd()): string {
+  let current = path.resolve(startDir);
+  const root = path.parse(current).root;
+
+  while (current && current !== root) {
+    if (
+      fs.existsSync(path.join(current, '.agents')) ||
+      fs.existsSync(path.join(current, '.git')) ||
+      fs.existsSync(path.join(current, 'package.json'))
+    ) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+
+  if (
+    fs.existsSync(path.join(root, '.agents')) ||
+    fs.existsSync(path.join(root, '.git')) ||
+    fs.existsSync(path.join(root, 'package.json'))
+  ) {
+    return root;
+  }
+
+  return startDir;
+}
+
+

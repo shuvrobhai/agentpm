@@ -22,6 +22,10 @@
 - **Workspace Root Discovery**: Recursive directory resolution mechanism that locates the enclosing workspace root (`.agents/` or `.git/`) to ensure consistent local plugin materialization discovery regardless of current execution directory.
 - **DashboardApi (`src/deploy/dashboard-api.ts`)**: Deep Express Router module exposing all Web Dashboard REST endpoints (`/status`, `/samples`, `/fs/browse`, `/inspect`, `/convert`, `/store`, `/doctor`, `/providers`, `/cli`) behind a composable router seam.
 - **DashboardUi (`src/deploy/dashboard-ui.ts`)**: Deep presentation module exporting pure template renderer function `renderDashboardHtml()` for the single-page Web Dashboard interface.
+- **Copy Materialization Fallback**: Automatic downgrade mechanism that switches from symlinks to copy materialization (`--copy`) when filesystem permissions (`EPERM`/`EACCES`) or platform constraints prevent directory symlink creation.
+- **Semantic Version Resolution**: Store version selection mechanism that sorts available release directories descending using `semver.rcompare` to accurately resolve the `latest` tag.
+- **Stream Separation**: The CLI UX convention where diagnostic banners, progress spinners, and error logs are directed to `stderr`, keeping `stdout` reserved strictly for clean, parseable data payloads (tables, JSON).
+
 
 
 

@@ -3,7 +3,7 @@ import { GlobalStore } from '../core/store.js';
 
 export async function uninstallCommand(plugin: string, options: { global?: boolean }): Promise<void> {
   try {
-    console.log(`Uninstalling plugin "${plugin}"...`);
+    console.error(`Uninstalling plugin "${plugin}"...`);
 
     const adapters = AdapterRegistry.all();
 
@@ -20,10 +20,10 @@ export async function uninstallCommand(plugin: string, options: { global?: boole
     // 2. Remove package directory from Global Store
     const removedPaths = await GlobalStore.removePlugin(plugin);
     for (const p of removedPaths) {
-      console.log(`Purged package from Global Store: ${p}`);
+      console.error(`Purged package from Global Store: ${p}`);
     }
 
-    console.log(`Successfully uninstalled plugin "${plugin}".`);
+    console.error(`Successfully uninstalled plugin "${plugin}".`);
   } catch (err: any) {
     console.error(`Error uninstalling plugin: ${err.message}`);
     process.exitCode = 1;

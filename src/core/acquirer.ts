@@ -47,8 +47,10 @@ const execFileAsync = promisify(execFile);
 const COMMIT_SHA_REGEX = /^[0-9a-fA-F]{40}$/;
 
 async function runGit(args: string[], cwd?: string): Promise<string> {
+  const env: Record<string, string | undefined> = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
   const { stdout } = await execFileAsync('git', args, {
     cwd,
+    env,
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
   });

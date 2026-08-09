@@ -6,7 +6,7 @@ export async function enableCommand(
 ): Promise<void> {
   try {
     const scope = options.global ? 'global' : 'local';
-    console.log(`Enabling plugin ${plugin} (${scope}, mode: ${options.copy ? 'copy' : 'symlink'})...`);
+    console.error(`Enabling plugin ${plugin} (${scope}, mode: ${options.copy ? 'copy' : 'symlink'})...`);
 
     const enableOpts = options.copy !== undefined ? { copy: options.copy } : undefined;
 
@@ -32,6 +32,6 @@ export async function enableCommand(
     }
   } catch (err: any) {
     console.error('Error enabling plugin:', err);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

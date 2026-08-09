@@ -5,6 +5,7 @@ import type { PortableCoreIR, ConversionResult } from '../ir/types.js';
 import { MaterializationEngine } from '../core/materialization.js';
 import { GlobalStore } from '../core/store.js';
 import { validateManifestForProvider } from '../core/manifest-validator.js';
+import { findWorkspaceRoot } from '../core/config.js';
 
 const NON_PLUGIN_DIR_NAMES = new Set([
   'cache',
@@ -141,22 +142,23 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   get candidateSearchDirs(): { global: string[]; local: string[] } {
     return {
       global: [this.globalPluginDir],
-      local: [path.join(process.cwd(), '.agents', 'plugins')],
+      local: [path.join(findWorkspaceRoot(), '.agents', 'plugins')],
     };
   }
 
-  getMaterializationPaths(scope: 'global' | 'local', cwd: string = process.cwd()): string[] {
+  getMaterializationPaths(scope: 'global' | 'local', cwd: string = findWorkspaceRoot()): string[] {
     if (scope === 'local') {
       const localDirs = this.candidateSearchDirs.local;
-      if (cwd !== process.cwd()) {
-        return localDirs.map((d) => d.replace(process.cwd(), cwd));
+      const root = findWorkspaceRoot(cwd);
+      if (root !== findWorkspaceRoot()) {
+        return localDirs.map((d) => d.replace(findWorkspaceRoot(), root));
       }
       return localDirs;
     }
     return this.candidateSearchDirs.global;
   }
 
-  async findActive(scope: 'global' | 'local' = 'local', cwd: string = process.cwd()): Promise<ActivePluginInfo[]> {
+  async findActive(scope: 'global' | 'local' = 'local', cwd: string = findWorkspaceRoot()): Promise<ActivePluginInfo[]> {
     const dirs = this.getMaterializationPaths(scope, cwd);
     const results: ActivePluginInfo[] = [];
     const seen = new Set<string>();
@@ -211,7 +213,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     return results;
   }
 
-  async checkHealth(options?: { fix?: boolean }, cwd: string = process.cwd()): Promise<AdapterHealthReport> {
+  async checkHealth(options?: { fix?: boolean }, cwd: string = findWorkspaceRoot()): Promise<AdapterHealthReport> {
     const issues: DiagnosticIssue[] = [];
     const fixedIssues: string[] = [];
     const activePlugins: ActivePluginInfo[] = [];
@@ -316,7 +318,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
 
   getLocalPluginDir(pluginName: string): string {
-    return path.join(process.cwd(), '.agents', 'plugins', pluginName);
+    return path.join(findWorkspaceRoot(), '.agents', 'plugins', pluginName);
   }
 
   async enable(
@@ -328,7 +330,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     let version = options?.version;
 
     const baseDir = scope === 'local'
-      ? path.join(process.cwd(), '.agents', 'plugins')
+      ? path.join(findWorkspaceRoot(), '.agents', 'plugins')
       : this.globalPluginDir;
 
     if (scope === 'local' && !options?.version) {
@@ -344,23 +346,41 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       version = version || (await this.resolveVersion(pluginName));
     }
 
-    const result = await MaterializationEngine.materialize({
-      adapterName: this.name,
-      pluginName,
-      version,
-      sourcePath,
-      scope,
-      targetBaseDir: baseDir,
-      copy: options?.copy,
-    });
+    let result;
+    try {
+      result = await MaterializationEngine.materialize({
+        adapterName: this.name,
+        pluginName,
+        version,
+        sourcePath,
+        scope,
+        targetBaseDir: baseDir,
+        copy: options?.copy,
+      });
+    } catch (err: any) {
+      if (options?.copy !== true && (err.code === 'EPERM' || err.code === 'EACCES' || err.message?.includes('symlink'))) {
+        console.error(`⚠️ Symlink creation failed (${err.code || err.message}); falling back to copy materialization mode for ${pluginName}.`);
+        result = await MaterializationEngine.materialize({
+          adapterName: this.name,
+          pluginName,
+          version,
+          sourcePath,
+          scope,
+          targetBaseDir: baseDir,
+          copy: true,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     const adapterTag = this.logTag;
 
     if (result.isCopy) {
-      console.log(`[${adapterTag}] Materialized copied folder: ${result.materializedPath} (isolated edit mode)`);
+      console.error(`[${adapterTag}] Materialized copied folder: ${result.materializedPath} (isolated edit mode)`);
     } else {
       const countSuffix = result.adaptedFilesCount > 0 ? ` (${result.adaptedFilesCount} files adapted)` : '';
-      console.log(`[${adapterTag}] Materialized symlink: ${result.materializedPath} -> ${result.sourcePath}${countSuffix}`);
+      console.error(`[${adapterTag}] Materialized symlink: ${result.materializedPath} -> ${result.sourcePath}${countSuffix}`);
     }
 
     const resolvedVer = version || 'latest';

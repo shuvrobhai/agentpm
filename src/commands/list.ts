@@ -1,5 +1,6 @@
 import { GlobalStore } from '../core/store.js';
 import { AdapterRegistry, type ActivePluginInfo } from '../adapters/index.js';
+import { findWorkspaceRoot } from '../core/config.js';
 
 export type ActiveSymlinkInfo = ActivePluginInfo;
 
@@ -12,16 +13,16 @@ export async function listCommand(options: { global?: boolean; json?: boolean })
         return;
       }
 
-      console.log(`\n📦 Global Plugin Store (${GlobalStore.getStorePath()}):\n`);
+      console.error(`\n📦 Global Plugin Store (${GlobalStore.getStorePath()}):\n`);
       if (stored.length === 0) {
-        console.log('  (No plugins installed in global store)');
+        console.error('  (No plugins installed in global store)');
         return;
       }
 
       for (const item of stored) {
         console.log(`  • ${item.namespace}/${item.pluginName} (${item.version}) -> ${item.fullPath}`);
       }
-      console.log('');
+      console.error('');
       return;
     }
 
@@ -33,10 +34,11 @@ export async function listCommand(options: { global?: boolean; json?: boolean })
       return;
     }
 
-    console.log(`\n🔗 Active Workspace Plugins (${process.cwd()}):\n`);
+    const wsRoot = findWorkspaceRoot();
+    console.error(`\n🔗 Active Workspace Plugins (${wsRoot}):\n`);
     if (symlinks.length === 0) {
-      console.log('  (No plugins materialized in active workspace)');
-      console.log('  Tip: Run `agentpm list --global` to see installed global store plugins.');
+      console.error('  (No plugins materialized in active workspace)');
+      console.error('  Tip: Run `agentpm list --global` to see installed global store plugins.');
       return;
     }
 
@@ -44,7 +46,7 @@ export async function listCommand(options: { global?: boolean; json?: boolean })
       const targetDisplay = link.targetPath ? ` -> ${link.targetPath}` : '';
       console.log(`  • [${link.agent}] ${link.pluginName}${targetDisplay}`);
     }
-    console.log('');
+    console.error('');
   } catch (err: any) {
     console.error(`Error listing plugins: ${err.message}`);
     process.exitCode = 1;

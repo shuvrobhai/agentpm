@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import * as p from '@clack/prompts';
+import { GlobalStore } from './core/store.js';
+import { AdapterRegistry } from './adapters/index.js';
 import { addCommand } from './commands/add.js';
 import { installCommand } from './commands/install.js';
 import { useCommand } from './commands/use.js';
@@ -52,11 +55,34 @@ program
   .argument('[plugins...]', 'Plugin names to remove')
   .option('-g, --global', 'Also dematerialize from global agent directories')
   .action(async (plugins: string[], options: { global?: boolean }) => {
-    if (plugins.length === 0) {
-      console.log('No plugins specified. List installed plugins with: plugins list');
-      return;
+    let targets = plugins;
+    if (targets.length === 0) {
+      if (process.stdin.isTTY) {
+        const stored = await GlobalStore.listGlobalPlugins();
+        const active = await AdapterRegistry.scanWorkspace();
+        const optionsList = Array.from(
+          new Set([...active.map(a => a.pluginName), ...stored.map(s => s.pluginName)])
+        );
+        if (optionsList.length === 0) {
+          console.error('No plugins found to remove.');
+          return;
+        }
+        const selected = await p.multiselect({
+          message: 'Select plugins to remove:',
+          options: optionsList.map(name => ({ value: name, label: name })),
+        });
+        if (p.isCancel(selected) || !selected || (selected as string[]).length === 0) {
+          console.error('Operation cancelled.');
+          return;
+        }
+        targets = selected as string[];
+      } else {
+        console.error('No plugins specified. List installed plugins with: plugins list');
+        process.exitCode = 1;
+        return;
+      }
     }
-    for (const plugin of plugins) {
+    for (const plugin of targets) {
       const opts: { global?: boolean } = {};
       if (options.global !== undefined) opts.global = options.global;
       await uninstallCommand(plugin, opts);
@@ -97,20 +123,70 @@ program
   .command('enable')
   .alias('e')
   .description('Enable/materialize a plugin for an AI agent context')
-  .argument('<plugin>', 'Plugin name or owner/plugin')
+  .argument('[plugin]', 'Plugin name or owner/plugin')
   .option('-g, --global', 'Enable globally across all detected agents')
   .option('-t, --target <agent>', 'Specific target agent adapter (e.g., antigravity, claude-code)')
   .option('-c, --copy', 'Copy plugin files into workspace instead of directory symlinking (isolated edit mode)')
-  .action(enableCommand);
+  .action(async (plugin: string | undefined, options: { global?: boolean; target?: string; copy?: boolean }) => {
+    let targetPlugin = plugin;
+    if (!targetPlugin) {
+      if (process.stdin.isTTY) {
+        const stored = await GlobalStore.listGlobalPlugins();
+        if (stored.length === 0) {
+          console.error('No installed plugins found in global store.');
+          return;
+        }
+        const selected = await p.select({
+          message: 'Select plugin to enable:',
+          options: stored.map(s => ({ value: s.pluginName, label: `${s.namespace}/${s.pluginName} (${s.version})` })),
+        });
+        if (p.isCancel(selected) || !selected) {
+          console.error('Operation cancelled.');
+          return;
+        }
+        targetPlugin = selected as string;
+      } else {
+        console.error('No plugin specified. Usage: plugins enable <plugin>');
+        process.exitCode = 1;
+        return;
+      }
+    }
+    await enableCommand(targetPlugin, options);
+  });
 
 program
   .command('disable')
   .alias('d')
   .description('Disable/dematerialize a plugin for an AI agent context')
-  .argument('<plugin>', 'Plugin name')
+  .argument('[plugin]', 'Plugin name')
   .option('-g, --global', 'Disable globally across all detected agents')
   .option('-t, --target <agent>', 'Specific target agent adapter (e.g., antigravity, claude-code)')
-  .action(disableCommand);
+  .action(async (plugin: string | undefined, options: { global?: boolean; target?: string }) => {
+    let targetPlugin = plugin;
+    if (!targetPlugin) {
+      if (process.stdin.isTTY) {
+        const active = await AdapterRegistry.scanWorkspace();
+        if (active.length === 0) {
+          console.error('No active workspace plugins found.');
+          return;
+        }
+        const selected = await p.select({
+          message: 'Select plugin to disable:',
+          options: active.map(a => ({ value: a.pluginName, label: `${a.pluginName} [${a.agent}]` })),
+        });
+        if (p.isCancel(selected) || !selected) {
+          console.error('Operation cancelled.');
+          return;
+        }
+        targetPlugin = selected as string;
+      } else {
+        console.error('No plugin specified. Usage: plugins disable <plugin>');
+        process.exitCode = 1;
+        return;
+      }
+    }
+    await disableCommand(targetPlugin, options);
+  });
 
 program
   .command('info')

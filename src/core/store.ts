@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import semver from 'semver';
 import {
   agentpmStorePluginsDir,
   agentpmStoreAdaptedDir,
@@ -111,6 +112,19 @@ export class GlobalStore {
       if (requestedVer === 'latest') {
         const availableVersions = await fs.readdir(pluginDir).catch(() => []);
         const validVersions = availableVersions.filter(v => !v.startsWith('.'));
+        const semverVersions = validVersions
+          .filter(v => semver.valid(v) || semver.valid(semver.coerce(v)))
+          .sort((a, b) => {
+            const svA = semver.valid(a) || semver.coerce(a)?.version;
+            const svB = semver.valid(b) || semver.coerce(b)?.version;
+            if (svA && svB) return semver.rcompare(svA, svB);
+            return 0;
+          });
+
+        if (semverVersions.length > 0 && semverVersions[0]) {
+          return path.join(pluginDir, semverVersions[0]);
+        }
+
         if (validVersions.length > 0 && validVersions[0]) {
           return path.join(pluginDir, validVersions[0]);
         }

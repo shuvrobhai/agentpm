@@ -26,12 +26,16 @@ export async function findCommand(query: string | undefined, options: FindOption
     const q = buildQuery(query, options.owner);
     const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=10`;
 
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'plugins-cli',
-      },
-    });
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'plugins-cli',
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const res = await fetch(url, { headers });
 
     if (!res.ok) {
       throw new Error(`GitHub search failed (${res.status}): ${res.statusText}`);
@@ -40,15 +44,15 @@ export async function findCommand(query: string | undefined, options: FindOption
     const data = (await res.json()) as GitHubRepoSearchResponse;
 
     if (data.message) {
-      console.log(`GitHub search: ${data.message}`);
+      console.error(`GitHub search: ${data.message}`);
       return;
     }
 
     const items = data.items || [];
-    console.log(`\n🔍 Plugins matching "${q}":\n`);
+    console.error(`\n🔍 Plugins matching "${q}":\n`);
     if (items.length === 0) {
-      console.log('  (No plugin repositories found)');
-      console.log('  Tip: Search GitHub for repos containing a plugin.json manifest.');
+      console.error('  (No plugin repositories found)');
+      console.error('  Tip: Search GitHub for repos containing a plugin.json manifest.');
       return;
     }
 

@@ -116,5 +116,25 @@ describe('GlobalStore Unit Tests', () => {
       await fs.rm(tempStore, { recursive: true, force: true });
     }
   });
+
+  test('findPluginPath resolves latest version using semver sorting', async () => {
+    const tempStore = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-semver-test-'));
+    const prevStore = process.env.AGENTPM_STORE;
+    process.env.AGENTPM_STORE = path.join(tempStore, 'data');
+
+    try {
+      const storePath = GlobalStore.getStorePath();
+      await fs.mkdir(path.join(storePath, 'semver-owner', 'semver-plugin', 'v1.2.0'), { recursive: true });
+      await fs.mkdir(path.join(storePath, 'semver-owner', 'semver-plugin', 'v1.10.0'), { recursive: true });
+      await fs.mkdir(path.join(storePath, 'semver-owner', 'semver-plugin', 'v1.9.0'), { recursive: true });
+
+      const resolved = await GlobalStore.findPluginPath('semver-owner/semver-plugin', 'latest');
+      assert.ok(resolved.endsWith('v1.10.0'), `Expected v1.10.0 but got ${resolved}`);
+    } finally {
+      if (prevStore === undefined) delete process.env.AGENTPM_STORE;
+      else process.env.AGENTPM_STORE = prevStore;
+      await fs.rm(tempStore, { recursive: true, force: true });
+    }
+  });
 });
 

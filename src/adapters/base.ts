@@ -85,7 +85,9 @@ export interface AdapterHealthReport {
 
 export interface AgentAdapter {
   name: string;
-  displayName?: string;
+  displayName: string;
+  globalPluginDir: string;
+  localPluginDir: string;
   detect(scope?: 'global' | 'local'): Promise<boolean>;
   capabilities(): string[];
   enable(

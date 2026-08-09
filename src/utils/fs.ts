@@ -22,29 +22,19 @@ export async function readJson<T = Record<string, unknown>>(p: string): Promise<
   }
 }
 
+// ponytail: stdlib native recursive readdir replaces custom recursive walker
 export async function listFilesRecursive(dir: string, base?: string): Promise<string[]> {
-  const baseDir = base ?? dir;
-  let entries;
   try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
+    const entries = await fs.readdir(dir, { recursive: true, withFileTypes: true });
+    return entries
+      .filter((e) => e.isFile() && !e.name.startsWith('.'))
+      .map((e) => {
+        const parent = (e as any).parentPath ?? (e as any).path ?? dir;
+        return path.relative(base ?? dir, path.join(parent, e.name));
+      });
   } catch {
     return [];
   }
-  const files: string[] = [];
-
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    const relativePath = path.relative(baseDir, fullPath);
-
-    if (entry.isDirectory()) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-      files.push(...await listFilesRecursive(fullPath, baseDir));
-    } else {
-      files.push(relativePath);
-    }
-  }
-
-  return files;
 }
 
 export async function listSubdirs(dir: string): Promise<string[]> {

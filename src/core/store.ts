@@ -324,11 +324,26 @@ export class GlobalStore {
   }
 
   private static splitIdentifier(pluginIdentifier: string): [string | undefined, string] {
-    const parts = pluginIdentifier.split('/');
+    const raw = pluginIdentifier.trim();
+    if (
+      raw.startsWith('http://') ||
+      raw.startsWith('https://') ||
+      raw.startsWith('git@') ||
+      raw.startsWith('file://') ||
+      raw.includes('/tree/')
+    ) {
+      try {
+        const parsed = this.parseRepoIdentifier(raw);
+        return [parsed.namespace, parsed.pluginName];
+      } catch {
+        // Fall back if parsing fails
+      }
+    }
+    const parts = raw.split('/');
     if (parts.length >= 2 && parts[0] && parts[1]) {
       return [parts[0] as string, parts[1] as string];
     }
-    return [undefined, pluginIdentifier];
+    return [undefined, raw];
   }
 
   /**

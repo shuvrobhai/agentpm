@@ -136,5 +136,27 @@ describe('GlobalStore Unit Tests', () => {
       await fs.rm(tempStore, { recursive: true, force: true });
     }
   });
+
+  test('removePlugin correctly parses full GitHub URL identifiers', async () => {
+    const tempStore = await fs.mkdtemp(path.join(os.tmpdir(), 'agentpm-rmurl-test-'));
+    const prevStore = process.env.AGENTPM_STORE;
+    process.env.AGENTPM_STORE = path.join(tempStore, 'data');
+
+    try {
+      const storePath = GlobalStore.getStorePath();
+      const pluginDir = path.join(storePath, 'nvidia', 'skills', 'latest');
+      await fs.mkdir(pluginDir, { recursive: true });
+      await fs.writeFile(path.join(pluginDir, 'plugin.json'), '{}', 'utf8');
+
+      const removed = await GlobalStore.removePlugin('https://github.com/nvidia/skills');
+      assert.ok(removed.length > 0, 'Should remove plugin when given full GitHub URL');
+      const exists = await fs.access(pluginDir).then(() => true).catch(() => false);
+      assert.strictEqual(exists, false);
+    } finally {
+      if (prevStore === undefined) delete process.env.AGENTPM_STORE;
+      else process.env.AGENTPM_STORE = prevStore;
+      await fs.rm(tempStore, { recursive: true, force: true });
+    }
+  });
 });
 

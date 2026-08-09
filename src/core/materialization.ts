@@ -3,6 +3,8 @@ import path from 'node:path';
 import { GlobalStore } from './store.js';
 import { parsePlugin } from '../parser/index.js';
 import { toPortableCore } from '../ir/to-portable-core.js';
+import { LockfileEngine, type MaterializedFile } from './lockfile.js';
+import { findWorkspaceRoot } from './config.js';
 
 export interface MaterializationOptions {
   adapterName: string;
@@ -25,6 +27,8 @@ export interface MaterializationResult {
 export interface DematerializationOptions {
   pluginName: string;
   targetBaseDirs: string[];
+  agentName?: string | undefined;
+  workspaceRoot?: string | undefined;
 }
 
 export class MaterializationEngine {
@@ -32,19 +36,45 @@ export class MaterializationEngine {
     const version = options.version || 'latest';
     const rawSourcePath = options.sourcePath || (await GlobalStore.findPluginPath(options.pluginName, version));
 
-    await GlobalStore.ensureDir(options.targetBaseDir);
+    let namespace = 'local';
+    let pluginDirName = options.pluginName;
 
-    const lastSegment = path.basename(rawSourcePath);
-    const isVersionSegment = ['latest', 'main', 'master', 'head'].includes(lastSegment.toLowerCase()) || /^v?\d+/.test(lastSegment);
+    if (options.pluginName.includes('/')) {
+      const parts = options.pluginName.split('/');
+      namespace = parts[0] || 'local';
+      pluginDirName = parts[1] || options.pluginName;
+    } else {
+      const storeRoot = GlobalStore.getStorePath();
+      const resolvedRaw = path.resolve(rawSourcePath);
+      if (resolvedRaw.startsWith(path.resolve(storeRoot))) {
+        const rel = path.relative(storeRoot, resolvedRaw);
+        const segments = rel.split(path.sep).filter(Boolean);
+        if (segments.length >= 3) {
+          if (segments.length >= 4) {
+            namespace = segments[1] || 'default';
+            pluginDirName = segments[2] || options.pluginName;
+          } else {
+            namespace = segments[0] || 'default';
+            pluginDirName = segments[1] || options.pluginName;
+          }
+        }
+      } else {
+        namespace = 'local';
+        const last = path.basename(rawSourcePath);
+        pluginDirName = last && !last.startsWith('.') ? last : options.pluginName;
+      }
+    }
 
-    const pluginDirName = isVersionSegment
-      ? path.basename(path.dirname(rawSourcePath))
-      : lastSegment;
+    if (namespace.startsWith('.')) {
+      namespace = 'local';
+    }
+    if (pluginDirName.startsWith('.')) {
+      pluginDirName = options.pluginName;
+    }
 
-    const namespace = path.basename(path.dirname(path.dirname(rawSourcePath)));
     const adaptedDir = GlobalStore.getAdaptedPluginPath(
       options.adapterName,
-      namespace || 'default',
+      namespace,
       pluginDirName,
       version
     );
@@ -54,26 +84,39 @@ export class MaterializationEngine {
     const targetSourcePath = options.sourcePath || (adaptedFilesCount > 0 ? adaptedDir : rawSourcePath);
     const linkPath = path.join(options.targetBaseDir, pluginDirName);
 
-    if (path.resolve(targetSourcePath) === path.resolve(linkPath)) {
-      // Converted files already exist in-place in local workspace directory
-      return {
-        pluginDirName,
-        materializedPath: linkPath,
-        sourcePath: targetSourcePath,
-        isCopy: false,
-        adaptedFilesCount,
-      };
+    if (path.resolve(targetSourcePath) !== path.resolve(linkPath)) {
+      const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
+      if (exists) {
+        await fs.rm(linkPath, { recursive: true, force: true });
+      }
+
+      if (options.copy) {
+        await GlobalStore.copyDirectoryDereferenced(targetSourcePath, linkPath);
+      } else {
+        await fs.symlink(targetSourcePath, linkPath, 'dir');
+      }
     }
 
-    const exists = await fs.lstat(linkPath).then(() => true).catch(() => false);
-    if (exists) {
-      await fs.rm(linkPath, { recursive: true, force: true });
-    }
+    // Record in local workspace lockfile if local scope (ADR 0021)
+    if (options.scope === 'local') {
+      const workspaceRoot = findWorkspaceRoot();
+      const relativeLinkPath = path.relative(workspaceRoot, linkPath);
+      const files: MaterializedFile[] = [
+        {
+          path: relativeLinkPath,
+          type: 'other',
+          managed: true,
+        },
+      ];
 
-    if (options.copy) {
-      await GlobalStore.copyDirectoryDereferenced(targetSourcePath, linkPath);
-    } else {
-      await fs.symlink(targetSourcePath, linkPath, 'dir');
+      await LockfileEngine.recordMaterialization({
+        pluginName: options.pluginName,
+        source: rawSourcePath,
+        version,
+        agent: options.adapterName,
+        files,
+        workspaceRoot,
+      });
     }
 
     return {
@@ -100,7 +143,13 @@ export class MaterializationEngine {
     const ir = await parsePlugin(sourceDir);
     const result = adapter.convert(toPortableCore(ir), 'workspace');
 
+    if (result.files.length === 0) {
+      return 0;
+    }
+
     await fs.mkdir(adaptedDir, { recursive: true });
+    await GlobalStore.copyDirectoryDereferenced(sourceDir, adaptedDir);
+
     for (const file of result.files) {
       const filePath = path.join(adaptedDir, file.relativePath);
       await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -119,6 +168,20 @@ export class MaterializationEngine {
       if (exists) {
         await fs.rm(linkPath, { recursive: true, force: true });
         removedPaths.push(linkPath);
+      }
+    }
+
+    // Clean up lockfile entries
+    const workspaceRoot = options.workspaceRoot || findWorkspaceRoot();
+    const lockfileRemoved = await LockfileEngine.removeMaterialization(
+      options.pluginName,
+      options.agentName,
+      workspaceRoot
+    );
+
+    for (const p of lockfileRemoved) {
+      if (!removedPaths.includes(p)) {
+        removedPaths.push(p);
       }
     }
 

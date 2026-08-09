@@ -8,6 +8,7 @@ import { AntigravityAdapter } from './antigravity.js';
 import { ClaudeCodeAdapter } from './claudecode.js';
 import { CodexAdapter } from './codex.js';
 import { OpenCodeAdapter } from './opencode.js';
+import { PiAdapter } from './pi.js';
 
 export type {
   AgentAdapter,
@@ -19,12 +20,15 @@ export * from './antigravity.js';
 export * from './claudecode.js';
 export * from './codex.js';
 export * from './opencode.js';
+export * from './pi.js';
+
 const adapters: Record<string, () => AgentAdapter> = {
   'antigravity': () => new AntigravityAdapter(),
   'claude-code': () => new ClaudeCodeAdapter(),
   'claudecode': () => new ClaudeCodeAdapter(),
   'codex': () => new CodexAdapter(),
   'opencode': () => new OpenCodeAdapter(),
+  'pi': () => new PiAdapter(),
 };
 
 export function listAdapters(): string[] {
@@ -47,11 +51,12 @@ export class AdapterRegistry {
       new ClaudeCodeAdapter(),
       new CodexAdapter(),
       new OpenCodeAdapter(),
+      new PiAdapter(),
     ];
   }
 
   static list(): string[] {
-    return ['antigravity', 'claude-code', 'codex', 'opencode'];
+    return ['antigravity', 'claude-code', 'codex', 'opencode', 'pi'];
   }
 
   static get(name: string): AgentAdapter {

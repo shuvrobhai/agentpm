@@ -17,7 +17,7 @@ describe('Agent Adapters Unit Tests', () => {
   test('AntigravityAdapter properties & detection', async () => {
     const adapter = new AntigravityAdapter();
     assert.equal(adapter.name, 'antigravity');
-    assert.deepEqual(adapter.capabilities(), ['skills', 'mcp', 'hooks']);
+    assert.deepEqual(adapter.capabilities(), ['skills', 'mcp', 'hooks', 'agents', 'rules', 'workflows']);
 
     const isDetected = await adapter.detect();
     assert.equal(typeof isDetected, 'boolean');

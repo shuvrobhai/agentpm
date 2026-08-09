@@ -20,12 +20,14 @@ import { inspectCommand } from './commands/inspect.js';
 import { docsCommand } from './commands/docs.js';
 import { providersCommand } from './commands/providers.js';
 import { doctorCommand } from './commands/doctor.js';
+import { syncCommand } from './commands/sync.js';
+import { detectCommand } from './commands/detect.js';
 
 const program = new Command();
 
 program
   .name('plugins')
-  .description('Manage cross-agent Agent Plugins: add, use, remove, list, find, update, init, doctor.')
+  .description('Manage cross-agent Agent Plugins: add, use, remove, list, find, update, init, sync, detect, doctor.')
   .version('0.2.0');
 
 
@@ -35,11 +37,17 @@ program
   .aliases(['a', 'install'])
   .argument('<package>', 'GitHub repository or package identifier (e.g. user/repo or user/repo#v1.0.0)')
   .option('-t, --target <agent>', 'Target agent adapter (e.g., antigravity, agent-plugins)', 'agent-plugins')
+  .option('--for <agent>', 'Target agent adapter (alias for --target)')
   .option('-g, --global', 'Enable globally across all detected agents')
   .option('-c, --copy', 'Copy plugin files instead of directory symlinking')
   .option('-f, --force', 'Force re-download if package already exists')
   .option('--no-enable', 'Install into the store without enabling')
-  .action(addCommand);
+  .action((pkg: string, options: any) => {
+    if (options.for && !options.target) {
+      options.target = options.for;
+    }
+    return addCommand(pkg, options);
+  });
 
 program
   .command('use')
@@ -54,7 +62,8 @@ program
   .aliases(['rm', 'uninstall'])
   .argument('[plugins...]', 'Plugin names to remove')
   .option('-g, --global', 'Also dematerialize from global agent directories')
-  .action(async (plugins: string[], options: { global?: boolean }) => {
+  .option('--for <agent>', 'Filter removal for specific target agent adapter')
+  .action(async (plugins: string[], options: { global?: boolean; for?: string }) => {
     let targets = plugins;
     if (targets.length === 0) {
       if (process.stdin.isTTY) {
@@ -110,6 +119,7 @@ program
   .description('Update plugins to latest versions')
   .argument('[plugins...]', 'Plugin names to update (default: all installed)')
   .option('-t, --target <agent>', 'Target agent adapter for re-conversion', 'agent-plugins')
+  .option('--for <agent>', 'Target agent adapter (alias for --target)')
   .action(updateCommand);
 
 program
@@ -126,9 +136,13 @@ program
   .argument('[plugin]', 'Plugin name or owner/plugin')
   .option('-g, --global', 'Enable globally across all detected agents')
   .option('-t, --target <agent>', 'Specific target agent adapter (e.g., antigravity, claude-code)')
+  .option('--for <agent>', 'Specific target agent adapter (alias for --target)')
   .option('-c, --copy', 'Copy plugin files into workspace instead of directory symlinking (isolated edit mode)')
-  .action(async (plugin: string | undefined, options: { global?: boolean; target?: string; copy?: boolean }) => {
+  .action(async (plugin: string | undefined, options: { global?: boolean; target?: string; for?: string; copy?: boolean }) => {
     let targetPlugin = plugin;
+    if (options.for && !options.target) {
+      options.target = options.for;
+    }
     if (!targetPlugin) {
       if (process.stdin.isTTY) {
         const stored = await GlobalStore.listGlobalPlugins();
@@ -161,8 +175,12 @@ program
   .argument('[plugin]', 'Plugin name')
   .option('-g, --global', 'Disable globally across all detected agents')
   .option('-t, --target <agent>', 'Specific target agent adapter (e.g., antigravity, claude-code)')
-  .action(async (plugin: string | undefined, options: { global?: boolean; target?: string }) => {
+  .option('--for <agent>', 'Specific target agent adapter (alias for --target)')
+  .action(async (plugin: string | undefined, options: { global?: boolean; target?: string; for?: string }) => {
     let targetPlugin = plugin;
+    if (options.for && !options.target) {
+      options.target = options.for;
+    }
     if (!targetPlugin) {
       if (process.stdin.isTTY) {
         const active = await AdapterRegistry.scanWorkspace();
@@ -197,13 +215,32 @@ program
   .action(infoCommand);
 
 program
+  .command('sync')
+  .description('Sync workspace materialization state against .agentpm.lock and re-materialize active agents')
+  .option('-p, --plugin <name>', 'Sync specific plugin only')
+  .option('-a, --agent <agent>', 'Sync specific target agent adapter')
+  .option('-d, --dry-run', 'Inspect drift without modifying workspace files')
+  .option('--json', 'Output lockfile and drift analysis as JSON')
+  .action(syncCommand);
+
+program
+  .command('detect')
+  .description('Detect active AI coding agent environments and materialized workspace/global plugins')
+  .option('-v, --verbose', 'Print detailed lists of materialized plugin paths')
+  .option('--json', 'Output detection report formatted as JSON')
+  .action(detectCommand);
+
+program
   .command('convert')
   .description('Convert a plugin to the portable Agent Plugins v1 core (default) or a native target')
   .argument('<plugin>', 'Plugin directory path or installed plugin identifier')
   .option('-t, --target <agent>', 'Native target adapter (e.g., opencode, antigravity; default emits portable v1 core)', 'agent-plugins')
+  .option('--to <agent>', 'Alias for --target')
+  .option('--from <agent>', 'Source agent identifier')
   .option('-m, --memory <filename>', 'Memory filename (AGENTS.md or CLAUDE.md)', 'AGENTS.md')
   .option('-v, --var-prefix <prefix>', 'Root variable placeholder prefix', 'PLUGIN_ROOT')
   .option('-o, --out <dir>', 'Output destination directory')
+  .option('-d, --dry-run', 'Perform conversion dry-run without writing output files')
   .action(convertCommand);
 
 program
@@ -216,7 +253,7 @@ program
 program
   .command('docs')
   .description('Inspect provider capability specs and official documentation')
-  .argument('[provider]', 'Provider name (antigravity, opencode, claude, codex)')
+  .argument('[provider]', 'Provider name (antigravity, opencode, claude, codex, pi)')
   .option('-m, --matrix', 'Display side-by-side provider capability matrix')
   .option('-j, --json', 'Output raw JSON specification')
   .action(docsCommand);
@@ -225,7 +262,7 @@ program
   .command('providers')
   .alias('inspect-disk')
   .description('Inspect target provider directories on disk to list active plugins')
-  .option('-p, --provider <name>', 'Filter by provider (antigravity, opencode, claude, codex)')
+  .option('-p, --provider <name>', 'Filter by provider (antigravity, opencode, claude, codex, pi)')
   .action(providersCommand);
 
 program
@@ -239,21 +276,16 @@ program
 program.addHelpText('after', `
 
 Examples:
-  $ plugins add octocat/Hello-World
-  $ plugins add anthropics/knowledge-work-plugins/tree/main/pdf-viewer --no-enable
-  $ plugins use vercel-labs/agent-skills@pdf-viewer
+  $ plugins add octocat/Hello-World --for antigravity
+  $ plugins sync --dry-run
+  $ plugins detect --verbose
+  $ plugins convert ./my-claude-plugin --from claude-code --to antigravity
   $ plugins remove pdf-viewer
   $ plugins list --global
   $ plugins find pdf
-  $ plugins update
   $ plugins init my-plugin
-  $ plugins enable pdf-viewer --target antigravity
-  $ plugins disable pdf-viewer
-  $ plugins info pdf-viewer
-  $ plugins convert ./my-claude-plugin --target agent-plugins
-  $ plugins inspect ./my-claude-plugin
-  $ plugins docs --matrix
-  $ plugins providers
+  $ plugins enable pdf-viewer --for pi
+  $ plugins doctor --fix
 `);
 
 program.parse(process.argv);

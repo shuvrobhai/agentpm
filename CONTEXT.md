@@ -24,7 +24,9 @@
 - **DashboardUi (`src/deploy/dashboard-ui.ts`)**: Deep presentation module exporting pure template renderer function `renderDashboardHtml()` for the single-page Web Dashboard interface.
 - **Copy Materialization Fallback**: Automatic downgrade mechanism that switches from symlinks to copy materialization (`--copy`) when filesystem permissions (`EPERM`/`EACCES`) or platform constraints prevent directory symlink creation.
 - **Semantic Version Resolution**: Store version selection mechanism that sorts available release directories descending using `semver.rcompare` to accurately resolve the `latest` tag.
-- **Stream Separation**: The CLI UX convention where diagnostic banners, progress spinners, and error logs are directed to `stderr`, keeping `stdout` reserved strictly for clean, parseable data payloads (tables, JSON).
+- **Workspace Lockfile (`.agentpm.lock`)**: Per-workspace atomic JSON ledger tracking materialized files (`MaterializedFile[]`), source hashes, adapter versions, and target agent materialization status to enable surgical uninstalls, drift detection, and `agentpm sync`.
+- **Tool Mapping Engine**: Bidirectional schema translation module (`src/ir/tool-mapper.ts`) converting host-specific tool names and hook matchers (e.g. `bash` → `run_command`, `read_file` → `view_file`) across Claude Code, Antigravity, OpenCode, Codex, and Pi.
+- **Hook Conversion Engine**: Translation subsystem (`src/ir/hook-converter.ts`) normalizing hook event types and matcher payloads between generic event models and target agent lifecycle schemas while logging structured lossy conversion warnings.
 
 
 

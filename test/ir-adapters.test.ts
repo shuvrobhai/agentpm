@@ -90,9 +90,9 @@ describe('IR adapters (ported from agentport)', () => {
       const ir = await parsePlugin(tmpDir);
       const result = getAdapter('antigravity').convert(toPortableCore(ir), 'workspace');
 
-      const skillFile = result.files.find(f => f.relativePath === 'skills/demo.md');
+      const skillFile = result.files.find(f => f.relativePath === 'skills/demo/SKILL.md');
       assert.ok(skillFile);
-      assert.ok(skillFile.content.startsWith('# demo'));
+      assert.ok(skillFile.content.includes('# demo'));
 
       const contextFile = result.files.find(f => f.relativePath === 'AGENTS.md');
       assert.ok(contextFile);
@@ -102,11 +102,12 @@ describe('IR adapters (ported from agentport)', () => {
   });
 
   test('adapter registry exposes merged lifecycle+conversion adapters', () => {
-    assert.deepEqual(listAdapters().sort(), ['antigravity', 'claude-code', 'claudecode', 'codex', 'opencode']);
+    assert.deepEqual(listAdapters().sort(), ['antigravity', 'claude-code', 'claudecode', 'codex', 'opencode', 'pi']);
     assert.ok(getAdapter('opencode').convert);
     assert.ok(getAdapter('antigravity').convert);
     assert.ok(getAdapter('claude-code').convert);
     assert.ok(getAdapter('codex').convert);
+    assert.ok(getAdapter('pi').convert);
     assert.throws(() => getAdapter('nope'));
   });
 

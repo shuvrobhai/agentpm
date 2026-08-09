@@ -135,21 +135,34 @@ flowchart TD
 │   ├── antigravity/                      #    Native Antigravity layout
 │   ├── claude-code/                      #    Native Claude Code layout
 │   ├── codex/                            #    Native Codex layout (with interface block)
-│   └── opencode/                         #    Native OpenCode layout
+│   ├── opencode/                         #    Native OpenCode layout
+│   └── pi/                               #    Native Pi extension layout (with index.ts wrapper)
 │
 └── source-registry.json                  # 4. Central Provenance Registry
 ```
 
 ---
 
-## 5. Host Provider Target Path Matrix
+## 5. Host Provider Target Path Matrix (Real-World Architecture)
 
-| Agent Provider | Global Plugin Symlink Destination | Primary Workspace Target | Workspace Fallback |
+| Agent Provider | Global Plugin Destination | Primary Workspace Target | Root Manifest |
 |---|---|---|---|
-| **Google Antigravity** | `~/.gemini/config/plugins/<plugin>` | `.agents/plugins/<plugin>` | `.agents/skills/<skill>/SKILL.md` |
-| **Claude Code** | `~/.claude/plugins/<plugin>` | `.agents/plugins/<plugin>` | `.claude/plugins/<plugin>` |
-| **OpenAI Codex** | `~/.codex/plugins/<plugin>` | `.agents/plugins/<plugin>` | `.codex/plugins/<plugin>` |
-| **OpenCode AI** | `~/.config/opencode/plugins/<plugin>` | `.agents/plugins/<plugin>` | `.opencode/plugins/<plugin>` |
+| **Google Antigravity** | `~/.gemini/config/plugins/<name>` | `.agents/plugins/<name>` | `plugin.json` (`$schema: .../v1/plugin.json`) |
+| **Claude Code** | `~/.claude/plugins/` | `.claude/plugins/<name>` | `.claude-plugin/plugin.json` |
+| **OpenCode AI** | `~/.config/opencode/plugins/<name>` | `.opencode/plugins/<name>` | `opencode.json` (`$schema: .../config.json`) |
+| **OpenAI Codex** | `~/.codex/plugins/cache/personal/<name>` | `.agents/plugins/<name>` | `.codex-plugin/plugin.json` |
+| **Pi Coding Agent** | `~/.pi/agent/extensions/<name>` | `.pi/extensions/<name>` | `trust.json` + `index.ts` |
+
+---
+
+## 6. Architecture Decision Records (ADRs)
+
+- [ADR 0021: Workspace Lockfile and File Tracking](file:///Users/rayhanislamshuvro/Developer/projects/agentpm/docs/adr/0021-workspace-lockfile-and-file-tracking.md)
+- [ADR 0022: Universal Tool Mapping and Unknown Tool Pass-Through](file:///Users/rayhanislamshuvro/Developer/projects/agentpm/docs/adr/0022-universal-tool-mapping-and-unknown-tool-pass-through.md)
+- [ADR 0023: Command/Workflow Conversion and 12k Limit Fallback](file:///Users/rayhanislamshuvro/Developer/projects/agentpm/docs/adr/0023-command-workflow-conversion-and-12k-limit-fallback.md)
+- [ADR 0024: MCP Path Rewriting and Absolute Expansion](file:///Users/rayhanislamshuvro/Developer/projects/agentpm/docs/adr/0024-mcp-path-rewriting-and-absolute-expansion.md)
+- [ADR 0025: Pi Agent Adapter TypeScript Extension Synthesis](file:///Users/rayhanislamshuvro/Developer/projects/agentpm/docs/adr/0025-pi-agent-adapter-typescript-extension-synthesis.md)
+- [ADR 0026: Multi-Agent Runtime Topologies and Materialization Contract](file:///Users/rayhanislamshuvro/Developer/projects/agentpm/docs/adr/0026-multi-agent-runtime-topologies-and-materialization-contract.md)
 
 ---
 

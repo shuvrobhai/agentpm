@@ -53,9 +53,11 @@ flowchart TD
 │   │   ├── antigravity.ts                # Google Antigravity adapter (.agents/, ~/.gemini/config/)
 │   │   ├── claudecode.ts                 # Claude Code adapter (~/.claude/plugins/)
 │   │   ├── codex.ts                      # OpenAI Codex adapter (~/.codex/plugins/, marketplace, toml)
-│   │   └── opencode.ts                   # OpenCode adapter (~/.config/opencode/plugins/)
+│   │   ├── opencode.ts                   # OpenCode adapter (~/.config/opencode/plugins/)
+│   │   ├── convert-writer.ts             # Native per-target emission shared by adapters
+│   │   └── index.ts                      # Adapter registry (discovery + lifecycle dispatch)
 │   ├── commands/                         # CLI command implementations
-│   │   ├── add.ts                        # `plugins add <pkg>` (download, convert, enable)
+│   │   ├── add.ts                        # `plugins add <pkg>` (download, convert, enable; alias install)
 │   │   ├── enable.ts                     # `plugins enable <pkg>` (materialize symlink/copy)
 │   │   ├── disable.ts                    # `plugins disable <pkg>` (dematerialize symlink)
 │   │   ├── uninstall.ts                  # `plugins remove <pkg>` (dematerialize + purge store)
@@ -63,16 +65,24 @@ flowchart TD
 │   │   ├── info.ts                       # `plugins info <pkg>` (manifest & capability inspect)
 │   │   ├── convert.ts                    # `plugins convert <src> -t <target>` (format converter)
 │   │   ├── init.ts                       # `plugins init [name]` (scaffold portable v1 plugin)
-│   │   └── use.ts                        # `plugins use <pkg>` (prompt runner without install)
+│   │   ├── use.ts                        # `plugins use <pkg>` (prompt runner without install)
+│   │   ├── find.ts                       # `plugins find [query]` (GitHub search for plugins)
+│   │   ├── update.ts                     # `plugins update [plugins...]` (re-download + reconvert)
+│   │   ├── inspect.ts                    # `plugins inspect <source>` (deep-parse into IR summary)
+│   │   ├── docs.ts                       # `plugins docs [provider]` (capability matrix / spec docs)
+│   │   ├── doctor.ts                     # `plugins doctor` (health checks, validate manifests)
+│   │   └── providers.ts                  # `plugins providers` (inspect provider dirs on disk)
 │   ├── core/                             # Storage, config, and materialization engines
 │   │   ├── acquirer.ts                   # Git clone & local path acquisition + security checks
-│   │   ├── config.ts                     # Injectable store roots (~/.agentplugins/)
+│   │   ├── config.ts                     # Injectable store roots (~/.agentplugins/ + ~/.cache/agentpm)
 │   │   ├── store.ts                      # GlobalStore (repos/, plugins/, registry management)
-│   │   ├── fetcher.ts                    # Download orchestration + vendor detection
 │   │   ├── materialization.ts            # Symlink creation, copy mode, and dematerialization
 │   │   ├── portable-writer.ts            # Emits portable v1 core + auto-generated README.md
 │   │   ├── v1-manifest.ts                # Manifest validation & normalization
-│   │   └── codex-validator.ts            # Native pure TypeScript Codex validator
+│   │   ├── manifest-validator.ts         # Multi-client manifest validation
+│   │   ├── codex-validator.ts            # Native pure TypeScript Codex validator
+│   │   ├── toml-builder.ts               # config.toml emission for Codex runtime activation
+│   │   └── topology.ts                   # ProviderTopology seam for provider discovery & inspection
 │   ├── ir/                               # Intermediate Representation (IR) types & mappers
 │   │   ├── types.ts                      # PluginIR (9 types) & PortableCoreIR (narrowed seam)
 │   │   ├── to-portable-core.ts           # ADR 0013 single narrowing seam
@@ -91,7 +101,7 @@ flowchart TD
 │   ├── PROJECT_MAP.md                    # THIS FILE: Master context & architecture guide
 │   ├── Global-Plugin-Failure-Modes-and-Solutions.md # Deep troubleshooting & failure modes
 │   ├── Cross-Agent Plugin Manager Research.md       # Full ecosystem comparative research
-│   └── adr/                              # Architectural Decision Records (0001 - 0014)
+│   └── adr/                              # Architectural Decision Records (0001 - 0015)
 │
 ├── test/                                 # Native Node.js test suite (node:test via tsx)
 │   ├── adapters.test.ts                  # Adapter unit tests & symlink lifecycles
@@ -170,7 +180,7 @@ flowchart TD
 # Compile TypeScript
 npm run build
 
-# Run full test suite (all 46 tests across 11 suites)
+# Run full test suite (all 63 tests across 14 suites)
 npm test
 
 # Test CLI commands

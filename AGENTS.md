@@ -22,7 +22,7 @@ This repo also absorbed **agentport** (2026-08): the deep 9-component parser + I
 - `test/` — `node:test` suite run via `tsx --test test/*.test.ts`.
 - `plugin.json` — portable v1 manifest (closed schema: only `$schema`, `name`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, `extensions`).
 - `skills/migrate-agent-plugin/` — the portable migration skill (with `references/`).
-- `docs/`, `memory/`, `CONTEXT.md`, `IDEA.md` — design history, ADRs (0001-0014), and master `PROJECT_MAP.md`.
+- `docs/`, `memory/`, `CONTEXT.md`, `IDEA.md` — design history, ADRs (0001-0015), and master `PROJECT_MAP.md`.
 
 ## 2. CLI Shape
 
@@ -84,7 +84,7 @@ npx ajv-cli validate --spec=draft2020 \
 - Master Project Map: `docs/PROJECT_MAP.md`
 - Failure Modes & Solutions: `docs/Global-Plugin-Failure-Modes-and-Solutions.md`
 - Agent Ecosystem Knowledge Base: `resource/`
-- Architecture Decisions: `docs/adr/` (0001 - 0014)
+- Architecture Decisions: `docs/adr/` (0001 - 0015)
 
 ## Agent skills
 

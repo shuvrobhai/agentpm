@@ -149,7 +149,7 @@ describe('Agent Adapters Unit Tests', () => {
     await fs.mkdir(mockSource, { recursive: true });
 
     const adapter = new ClaudeCodeAdapter();
-    const localPluginsDir = path.join(process.cwd(), '.agents', 'plugins');
+    const localPluginsDir = adapter.localPluginDir;
     const linkPath = path.join(localPluginsDir, 'test-claude-plugin');
 
     try {

@@ -6,6 +6,10 @@ import { formatAgentSkill, skillSupportingFilesWarning } from '../ir/skill-forma
 import { serializeNativeHooks } from '../ir/native-hooks.js';
 import { buildNativeManifestMetadata } from '../core/v1-manifest.js';
 
+import { findWorkspaceRoot } from '../core/config.js';
+import { mapToolNames } from '../ir/tool-mapper.js';
+import { rewriteMcpServer } from '../core/mcp-rewriter.js';
+
 export class ClaudeCodeAdapter extends BaseAgentAdapter {
   name = 'claude-code';
   displayName = 'Claude Code';
@@ -23,7 +27,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   get localPluginDir(): string {
-    return path.join(process.cwd(), '.claudecode');
+    return path.join(findWorkspaceRoot(), '.claude', 'plugins');
   }
 
   override get candidateSearchDirs(): { global: string[]; local: string[] } {
@@ -45,6 +49,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     const warnings: string[] = [];
     const manualSteps: string[] = [];
     const { extensions } = ir;
+    const storePath = ir.source.resolvedPath || process.cwd();
 
     const metadata = buildNativeManifestMetadata(
       ir.metadata ?? {},
@@ -84,9 +89,30 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     }
 
     for (const agent of extensions.agents) {
+      const { mappedTools, warnings: toolWarnings } = mapToolNames(agent.tools, 'claude-code');
+      warnings.push(...toolWarnings);
+
+      const agentFrontmatter: string[] = [
+        '---',
+        `name: ${agent.name}`,
+        `description: ${JSON.stringify(agent.description || agent.name)}`,
+      ];
+      if (mappedTools.length > 0) {
+        agentFrontmatter.push('tools:');
+        for (const t of mappedTools) {
+          agentFrontmatter.push(`  - ${t}`);
+        }
+      }
+      if (agent.model) {
+        agentFrontmatter.push(`model: ${agent.model}`);
+      }
+      agentFrontmatter.push('---');
+      agentFrontmatter.push('');
+      agentFrontmatter.push(agent.body);
+
       files.push({
         relativePath: `agents/${agent.name}.md`,
-        content: agent.body,
+        content: agentFrontmatter.join('\n'),
         description: `Agent: ${agent.name}`,
       });
     }
@@ -94,15 +120,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     if (ir.mcpServers.length > 0) {
       const mcpConfig: Record<string, unknown> = {};
       for (const server of ir.mcpServers) {
+        const rewritten = rewriteMcpServer(server, {
+          pluginStorePath: storePath,
+          targetProvider: 'claude-code',
+        });
         const entry: Record<string, unknown> = {};
-        if (server.command !== undefined) entry.command = server.command;
-        if (server.args !== undefined) entry.args = server.args;
-        if (server.env !== undefined) entry.env = server.env;
-        if (server.url !== undefined) entry.url = server.url;
-        if (server.headers !== undefined) entry.headers = server.headers;
-        // stdio is implicit from `command`; remote transports carry an explicit type.
-        if (server.type !== undefined && server.type !== 'stdio') {
-          entry.type = server.type === 'streamable-http' ? 'http' : server.type;
+        if (rewritten.command !== undefined) entry.command = rewritten.command;
+        if (rewritten.args !== undefined) entry.args = rewritten.args;
+        if (rewritten.env !== undefined) entry.env = rewritten.env;
+        if (rewritten.url !== undefined) entry.url = rewritten.url;
+        if (rewritten.headers !== undefined) entry.headers = rewritten.headers;
+        if (rewritten.cwd !== undefined) entry.cwd = rewritten.cwd;
+        if (rewritten.type !== undefined && rewritten.type !== 'stdio') {
+          entry.type = rewritten.type === 'streamable-http' ? 'http' : rewritten.type;
         }
         mcpConfig[server.name] = entry;
       }

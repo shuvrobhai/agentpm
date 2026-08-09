@@ -1,6 +1,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { BaseAgentAdapter } from './base.js';
+import { findWorkspaceRoot } from '../core/config.js';
 import type { PortableCoreIR, ConversionResult, FileOutput } from '../ir/types.js';
 import { mapToolNames } from '../ir/tool-mapper.js';
 import { rewriteMcpServer } from '../core/mcp-rewriter.js';
@@ -71,7 +72,7 @@ export class AntigravityAdapter extends BaseAgentAdapter {
   }
 
   get localPluginDir(): string {
-    return path.join(process.cwd(), '.agents');
+    return path.join(findWorkspaceRoot(), '.agents', 'plugins');
   }
 
   override get candidateSearchDirs(): { global: string[]; local: string[] } {

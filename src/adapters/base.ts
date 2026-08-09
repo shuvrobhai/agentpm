@@ -318,7 +318,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   }
 
   getLocalPluginDir(pluginName: string): string {
-    return path.join(findWorkspaceRoot(), '.agents', 'plugins', pluginName);
+    return path.join(this.localPluginDir, pluginName);
   }
 
   async enable(
@@ -330,7 +330,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     let version = options?.version;
 
     const baseDir = scope === 'local'
-      ? path.join(findWorkspaceRoot(), '.agents', 'plugins')
+      ? this.localPluginDir
       : this.globalPluginDir;
 
     if (scope === 'local' && !options?.version) {

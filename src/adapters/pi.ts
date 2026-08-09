@@ -4,6 +4,8 @@ import { BaseAgentAdapter } from './base.js';
 import type { PortableCoreIR, ConversionResult, FileOutput } from '../ir/types.js';
 import { rewriteMcpServer } from '../core/mcp-rewriter.js';
 
+import { findWorkspaceRoot } from '../core/config.js';
+
 export class PiAdapter extends BaseAgentAdapter {
   name = 'pi';
   displayName = 'Pi Coding Agent';
@@ -21,7 +23,7 @@ export class PiAdapter extends BaseAgentAdapter {
   }
 
   get localPluginDir(): string {
-    return path.join(process.cwd(), '.pi', 'extensions');
+    return path.join(findWorkspaceRoot(), '.pi', 'extensions');
   }
 
   override get candidateSearchDirs(): { global: string[]; local: string[] } {
@@ -32,7 +34,7 @@ export class PiAdapter extends BaseAgentAdapter {
   }
 
   capabilities(): string[] {
-    return ['skills', 'mcp', 'hooks', 'agents'];
+    return ['skills', 'mcp', 'hooks', 'agents', 'commands'];
   }
 
   convert(ir: PortableCoreIR, _scope: 'workspace' | 'global'): ConversionResult {
@@ -48,6 +50,15 @@ export class PiAdapter extends BaseAgentAdapter {
         relativePath: `skills/${skill.name}/SKILL.md`,
         content: `# ${skill.name}\n\n${skill.description ? `${skill.description}\n\n` : ''}${skill.body}`,
         description: `Skill: ${skill.name}`,
+      });
+    }
+
+    // Convert commands to skills for Pi
+    for (const cmd of extensions.commands) {
+      files.push({
+        relativePath: `skills/${cmd.name}/SKILL.md`,
+        content: `# ${cmd.name}\n\n${cmd.description ? `${cmd.description}\n\n` : ''}${cmd.body}`,
+        description: `Upgraded Command to Skill for Pi: ${cmd.name}`,
       });
     }
 
@@ -79,8 +90,9 @@ export class PiAdapter extends BaseAgentAdapter {
     extensionLines.push('export default function (pi: any) {');
 
     // Register skills with /skill: prefix
-    for (const skill of ir.skills) {
-      extensionLines.push(`  pi.registerSkill({ name: ${JSON.stringify(skill.name)}, path: './skills/${skill.name}/SKILL.md' });`);
+    const allSkillNames = [...ir.skills.map((s) => s.name), ...extensions.commands.map((c) => c.name)];
+    for (const skillName of allSkillNames) {
+      extensionLines.push(`  pi.registerSkill({ name: ${JSON.stringify(skillName)}, path: './skills/${skillName}/SKILL.md' });`);
     }
 
     // Register hooks as pi.on() listeners

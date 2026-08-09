@@ -51,8 +51,7 @@ export function rewriteMcpServer<T extends PortableMCPServerIR | MCPServerIR>(
 
   if (copy.cwd) {
     copy.cwd = expandPathString(copy.cwd, pluginStorePath, workspaceRoot);
-  } else {
-    // Codex & Antigravity explicitly require cwd to be set if relative paths are present
+  } else if (options.targetProvider === 'antigravity' || options.targetProvider === 'codex' || options.targetProvider === 'pi') {
     copy.cwd = pluginStorePath;
   }
 
@@ -89,7 +88,7 @@ export function rewriteMcpConfig(
 
     if (typeof cfg.cwd === 'string') {
       cfg.cwd = expandPathString(cfg.cwd, pluginStorePath, workspaceRoot);
-    } else {
+    } else if (options.targetProvider === 'antigravity' || options.targetProvider === 'codex' || options.targetProvider === 'pi') {
       cfg.cwd = pluginStorePath;
     }
 

@@ -125,6 +125,10 @@ function formatAgentFrontmatter(agent: {
     .join('\n')}\n---`;
 }
 
+import { findWorkspaceRoot } from '../core/config.js';
+import { mapToolNames } from '../ir/tool-mapper.js';
+import { rewriteMcpServer } from '../core/mcp-rewriter.js';
+
 export class OpenCodeAdapter extends BaseAgentAdapter {
   name = 'opencode';
   displayName = 'OpenCode';
@@ -142,11 +146,11 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
   }
 
   get localPluginDir(): string {
-    return path.join(process.cwd(), '.opencode');
+    return path.join(findWorkspaceRoot(), '.opencode', 'plugins');
   }
 
   override getLocalPluginDir(pluginName: string): string {
-    return path.join(process.cwd(), '.opencode', 'skills', pluginName);
+    return path.join(findWorkspaceRoot(), '.opencode', 'plugins', pluginName);
   }
 
   override get candidateSearchDirs(): { global: string[]; local: string[] } {
@@ -170,28 +174,35 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     const warnings: string[] = [];
     const manualSteps: string[] = [];
     const { extensions } = ir;
+    const storePath = ir.source.resolvedPath || process.cwd();
 
     const mcpConfig: Record<string, unknown> = {};
     if (ir.mcpServers.length > 0) {
       for (const server of ir.mcpServers) {
-        const cmd = mcpCommandToArray(server.command, server.args);
+        const rewritten = rewriteMcpServer(server, {
+          pluginStorePath: storePath,
+          targetProvider: 'opencode',
+        });
+        const cmd = mcpCommandToArray(rewritten.command, rewritten.args);
         if (!cmd) {
           warnings.push(`MCP "${server.name}": missing command, skipping`);
           continue;
         }
-        const env = mcpEnvironment(server.env);
+        const env = mcpEnvironment(rewritten.env);
         mcpConfig[server.name] = {
-          type: server.type === 'url' ? 'remote' : 'local',
+          type: rewritten.type === 'url' ? 'remote' : 'local',
           command: cmd,
           ...(env !== undefined ? { environment: env } : {}),
-          ...(server.url !== undefined ? { url: server.url } : {}),
-          ...(server.headers !== undefined ? { headers: server.headers } : {}),
-          enabled: server.disabled === true ? false : true,
+          ...(rewritten.url !== undefined ? { url: rewritten.url } : {}),
+          ...(rewritten.headers !== undefined ? { headers: rewritten.headers } : {}),
+          enabled: rewritten.disabled === true ? false : true,
         };
       }
 
       const opencodeConfig: Record<string, unknown> = {
         $schema: 'https://opencode.ai/config.json',
+        name: ir.source.pluginName || 'agentpm-plugin',
+        description: ir.source.pluginDescription || `${ir.source.pluginName || 'agentpm'} OpenCode Plugin`,
       };
 
       if (Object.keys(mcpConfig).length > 0) {
@@ -206,7 +217,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
         relativePath: 'opencode.json',
         content: JSON.stringify(opencodeConfig, null, 2),
         merge: true,
-        description: 'OpenCode configuration (MCP servers, instructions)',
+        description: 'OpenCode configuration (opencode.json)',
       });
     } else if (extensions.rules.length > 0) {
       const opencodeConfig: Record<string, unknown> = {

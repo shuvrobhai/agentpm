@@ -8,6 +8,9 @@ import { formatAgentSkill, skillSupportingFilesWarning } from '../ir/skill-forma
 import { serializeNativeHooks } from '../ir/native-hooks.js';
 import { validateCodexManifest } from '../core/codex-validator.js';
 
+import { findWorkspaceRoot } from '../core/config.js';
+import { rewriteMcpServer } from '../core/mcp-rewriter.js';
+
 export class CodexAdapter extends BaseAgentAdapter {
   name = 'codex';
   displayName = 'Codex';
@@ -29,7 +32,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   }
 
   get localPluginDir(): string {
-    return path.join(process.cwd(), '.codex');
+    return path.join(findWorkspaceRoot(), '.agents', 'plugins');
   }
 
   override get candidateSearchDirs(): { global: string[]; local: string[] } {
@@ -57,6 +60,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     const warnings: string[] = [];
     const manualSteps: string[] = [];
     const { extensions } = ir;
+    const storePath = ir.source.resolvedPath || process.cwd();
 
     const desc = typeof ir.metadata['description'] === 'string' ? ir.metadata['description'] : '';
     const shortDesc = desc.slice(0, 100) || `${ir.source.pluginName} skills`;
@@ -116,16 +120,29 @@ export class CodexAdapter extends BaseAgentAdapter {
       if (warn) warnings.push(warn);
     }
 
+    // Convert commands to skills for Codex
+    for (const cmd of extensions.commands) {
+      files.push({
+        relativePath: `skills/${cmd.name}/SKILL.md`,
+        content: `# ${cmd.name}\n\n${cmd.description ? `${cmd.description}\n\n` : ''}${cmd.body}`,
+        description: `Upgraded Command to Skill for Codex: ${cmd.name}`,
+      });
+    }
+
     if (ir.mcpServers.length > 0) {
       const mcpConfig: Record<string, unknown> = {};
       for (const server of ir.mcpServers) {
+        const rewritten = rewriteMcpServer(server, {
+          pluginStorePath: storePath,
+          targetProvider: 'codex',
+        });
         const entry: Record<string, unknown> = {};
-        if (server.command !== undefined) entry.command = server.command;
-        if (server.args !== undefined) entry.args = server.args;
-        if (server.env !== undefined) entry.env = server.env;
-        if (server.url !== undefined) entry.url = server.url;
-        if (server.headers !== undefined) entry.headers = server.headers;
-        if (server.cwd !== undefined) entry.cwd = server.cwd;
+        if (rewritten.command !== undefined) entry.command = rewritten.command;
+        if (rewritten.args !== undefined) entry.args = rewritten.args;
+        if (rewritten.env !== undefined) entry.env = rewritten.env;
+        if (rewritten.url !== undefined) entry.url = rewritten.url;
+        if (rewritten.headers !== undefined) entry.headers = rewritten.headers;
+        if (rewritten.cwd !== undefined) entry.cwd = rewritten.cwd;
         mcpConfig[server.name] = entry;
       }
       files.push({

@@ -5,7 +5,7 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import { initCommand } from '../src/commands/init.js';
 import { useCommand } from '../src/commands/use.js';
-import { installCommand, DEFAULT_INSTALL_TARGET } from '../src/commands/install.js';
+import { installCommand, DEFAULT_INSTALL_TARGET } from '../src/commands/add.js';
 import { GlobalStore } from '../src/core/store.js';
 import { isolateAgentStore } from './helpers.js';
 
